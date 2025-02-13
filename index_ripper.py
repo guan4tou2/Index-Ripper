@@ -93,12 +93,39 @@ class WebsiteCopier:
             style="Custom.Treeview",  # 使用自定義樣式
         )
 
-        # 創建自定義樣式
+        # 修改自定義樣式配置
         style = ttk.Style()
         style.configure(
             "Custom.Treeview",
-            rowheight=25,  # 增加行高以容納更大的勾選框
+            rowheight=25,
+            background="#ffffff",
+            fieldbackground="#ffffff",
+            borderwidth=1,
+            relief="solid"
         )
+        
+        # 配置選中項目的背景顏色
+        style.map(
+            "Custom.Treeview",
+            background=[("selected", "#e6f3ff")]
+        )
+        
+        # 添加標籤配置 - 修改優先級順序
+        self.tree.tag_configure("unchecked", background="#ffffff")  # 基本背景
+        self.tree.tag_configure("checked", background="#e6ffe6")  # 選中背景
+        self.tree.tag_configure("name_zone", background="#ffffff")  # 名稱區域
+        self.tree.tag_configure("arrow_zone", background="#f0f0f0")  # 箭頭區域
+        self.tree.tag_configure("arrow_hover", background="#e0e0e0")  # 箭頭懸停效果
+
+        # 設置表格列標題樣式
+        style.configure(
+            "Treeview.Heading",
+            borderwidth=1,
+            relief="solid"
+        )
+        
+        # 設置顯示模式（只能使用 tree 和 headings）
+        self.tree.configure(style="Custom.Treeview", show=("tree", "headings"))
 
         # 設置列配置
         self.tree["columns"] = ("size", "type")
@@ -130,7 +157,7 @@ class WebsiteCopier:
         self.checked_items = set()
 
         # 修改勾選框圖標
-        self.checkbox_unchecked = "☐"  # 未選中
+        self.checkbox_unchecked = ""  # 空字串，不顯示未選中框
         self.checkbox_checked = "✅"  # 已選中
         self.folder_icon = "📁"  # 資料夾
         self.file_icon = "📄"  # 檔案
@@ -234,6 +261,10 @@ class WebsiteCopier:
         # 添加線程控制
         self.should_stop = False
 
+        # 綁定滑鼠移動和離開事件
+        self.tree.bind('<Motion>', self.on_mouse_move)
+        self.tree.bind('<Leave>', self.on_mouse_leave)
+
     def choose_download_path(self):
         path = filedialog.askdirectory(title="選擇下載位置")
         if path:
@@ -313,7 +344,7 @@ class WebsiteCopier:
             folder_id = self.tree.insert(
                 parent,
                 "end",
-                text=f"{self.checkbox_unchecked} {self.folder_icon} {part}",
+                text=f"{self.folder_icon} {part}",  # 移除未選中框
                 values=("", "目錄"),
                 tags=("folder", "unchecked"),
             )
@@ -347,9 +378,8 @@ class WebsiteCopier:
         item_x = int(self.tree.bbox(item)[0])
         relative_x = event.x - item_x
         
-        # 定義區域寬度
+        # 定義箭頭區域寬度
         arrow_width = 30
-        checkbox_width = 30
         
         print(f"相對點擊位置: {relative_x}")
         
@@ -357,11 +387,9 @@ class WebsiteCopier:
             print("點擊箭頭區域")
             # 展開/收合資料夾的預設行為
             return
-        elif relative_x < arrow_width + checkbox_width:
-            print("點擊勾選框區域")
-            self.toggle_check(item)
         else:
-            print("點擊名稱區域")
+            print("點擊項目區域")
+            self.toggle_check(item)
 
     def toggle_check(self, item, force_check=None, force_uncheck=None):
         """切換項目的勾選狀態"""
@@ -379,50 +407,45 @@ class WebsiteCopier:
         print(f"當前文字: {text}")
         print(f"當前標籤: {tags}")
 
-        parts = text.split(" ", 2)
-        if len(parts) < 3:
-            print(f"錯誤：文字格式不正確 - {text}")
+        # 移除所有勾選框，只保留最後的圖標和名稱
+        text_parts = text.split(" ")
+        # 從後往前找到第一個圖標（📁 或 📄）
+        for i, part in enumerate(text_parts):
+            if part in [self.folder_icon, self.file_icon]:
+                icon = part
+                name = " ".join(text_parts[i+1:])
+                break
+        else:
+            print(f"錯誤：找不到有效的圖標 - {text}")
             return
 
-        checkbox, icon, name = parts
-        print(f"分解結果：checkbox='{checkbox}', icon='{icon}', name='{name}'")
+        is_checked = "checked" in tags
 
         # 決定新的勾選狀態
-        print("\n檢查勾選狀態:")
-        print(f"force_check: {force_check}")
-        print(f"force_uncheck: {force_uncheck}")
-        print(f"當前checkbox: {checkbox}")
-        print(f"checkbox_unchecked: {self.checkbox_unchecked}")
-
         if force_check is not None:
             is_checked = force_check
-            print(f"強制勾選: {is_checked}")
         elif force_uncheck is not None:
             is_checked = not force_uncheck
-            print(f"強制取消勾選: {is_checked}")
         else:
-            is_checked = checkbox == self.checkbox_unchecked
-            print(f"切換狀態: {is_checked}")
+            is_checked = not is_checked
 
-        # 更新勾選框
-        new_checkbox = self.checkbox_checked if is_checked else self.checkbox_unchecked
-        new_text = f"{new_checkbox} {icon} {name}"
-        print(f"\n更新項目:")
-        print(f"新勾選框: {new_checkbox}")
-        print(f"新文字: {new_text}")
+        # 更新文字和標籤
+        if is_checked:
+            new_text = f"{self.checkbox_checked} {icon} {name}"
+        else:
+            new_text = f"{icon} {name}"
 
-        self.tree.item(item, text=new_text)
+        new_tags = [tag for tag in tags if tag not in ("checked", "unchecked")]
+        new_tags.append("checked" if is_checked else "unchecked")
+
+        # 更新項目
+        self.tree.item(item, text=new_text, tags=new_tags)
 
         # 更新勾選集合
-        print("\n更新勾選集合:")
-        print(f"項目 {item} 之前是否在集合中: {item in self.checked_items}")
         if is_checked:
             self.checked_items.add(item)
-            print(f"已加入集合")
         else:
             self.checked_items.discard(item)
-            print(f"已從集合移除")
-        print(f"目前集合大小: {len(self.checked_items)}")
 
         # 如果是資料夾，遞迴處理子項目
         if "folder" in tags:
@@ -693,16 +716,11 @@ class WebsiteCopier:
     def _add_file_to_tree(self, parent_id, file_name, size, file_type, full_path, url):
         """在主線程中添加檔案到樹狀結構"""
         try:
-            # 檢查檔案是否已存在
-            for child in self.tree.get_children(parent_id):
-                if self.tree.item(child)["text"].endswith(f" {file_name}"):
-                    return
-
-            # 添加檔案
+            # 添加檔案時不顯示未選中框
             item_id = self.tree.insert(
                 parent_id,
                 "end",
-                text=f"{self.checkbox_unchecked} {self.file_icon} {file_name}",
+                text=f"{self.file_icon} {file_name}",  # 移除未選中框
                 values=(size, file_type),
                 tags=("file", "unchecked"),
             )
@@ -1216,9 +1234,8 @@ class WebsiteCopier:
         if not item:
             return
 
-        # 清除所有項目的背景色
-        for tag in ['arrow_zone', 'checkbox_zone', 'name_zone']:
-            self.tree.tag_remove(tag, item)
+        # 清除所有項目的懸停效果
+        self._clear_hover_effects()
 
         # 根據滑鼠位置設置背景色
         region = self.tree.identify("region", event.x, event.y)
@@ -1226,14 +1243,46 @@ class WebsiteCopier:
             # 計算不同區域的x座標範圍
             item_x = int(self.tree.bbox(item)[0])  # 項目起始x座標
             arrow_width = 30  # 箭頭區域寬度
-            checkbox_width = 30  # 勾選框區域寬度
+            
+            # 獲取當前項目的標籤
+            current_tags = list(self.tree.item(item)["tags"])
+            base_tags = [tag for tag in current_tags if tag in ("checked", "unchecked", "file", "folder")]
             
             if event.x < item_x + arrow_width:
-                self.tree.tag_add('arrow_zone', item)
-            elif event.x < item_x + arrow_width + checkbox_width:
-                self.tree.tag_add('checkbox_zone', item)
+                # 檢查是否是資料夾（有子項目）
+                if self.tree.get_children(item):
+                    self.tree.item(item, tags=base_tags + ["arrow_hover"])
+                    self.tree.configure(cursor="hand2")
+                else:
+                    self.tree.item(item, tags=base_tags + ["arrow_zone"])
+                    self.tree.configure(cursor="")
             else:
-                self.tree.tag_add('name_zone', item)
+                self.tree.item(item, tags=base_tags + ["name_zone"])
+                self.tree.configure(cursor="")
+
+    def on_mouse_leave(self, event):
+        """處理滑鼠離開事件"""
+        self._clear_hover_effects()
+        self.tree.configure(cursor="")
+
+    def _clear_hover_effects(self):
+        """清除所有懸停效果"""
+        for item in self.tree.get_children(""):
+            self._clear_item_hover(item)
+
+    def _clear_item_hover(self, item):
+        """清除單個項目的懸停效果"""
+        if not self.tree.exists(item):
+            return
+        
+        current_tags = list(self.tree.item(item)["tags"])
+        # 保留基本標籤
+        base_tags = [tag for tag in current_tags if tag in ("checked", "unchecked", "file", "folder")]
+        self.tree.item(item, tags=base_tags)
+        
+        # 遞迴處理子項目
+        for child in self.tree.get_children(item):
+            self._clear_item_hover(child)
 
 
 if __name__ == "__main__":
