@@ -41,10 +41,7 @@ class WebsiteCopier:
         ttk.Label(url_input_frame, text="網址:").pack(side=tk.LEFT)
         self.url_entry = ttk.Entry(url_input_frame)
         self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        # 設置預設測試網址
-        self.url_entry.insert(
-            0, "http://89.203.39.47:9000/OSCP%20Lessons%20-%20Shared%20by%20Tamarisk/"
-        )
+
 
         # 修改檔案類型過濾區域
         filter_frame = ttk.LabelFrame(self.url_frame, text="檔案類型過濾")
