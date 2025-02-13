@@ -844,20 +844,28 @@ class WebsiteCopier:
         # 創建下載任務
         futures = []
         for item in files_to_download:
-            # 獲取完整的檔案路徑
-            file_name = " ".join(
-                self.tree.item(item)["text"].split()[2:]
-            )  # 移除勾選框和圖標
+            # 獲取檔案名稱（移除勾選框和圖標）
+            text_parts = self.tree.item(item)["text"].split(" ")
+            for i, part in enumerate(text_parts):
+                if part in [self.folder_icon, self.file_icon]:
+                    file_name = " ".join(text_parts[i+1:])
+                    break
+            else:
+                continue
 
             # 構建檔案的完整路徑
-            parent = item
             path_parts = []
-            while parent:
-                parent_text = self.tree.item(parent)["text"]
-                if parent != item:  # 不包含檔案名
-                    folder_name = " ".join(parent_text.split()[2:])  # 移除勾選框和圖標
-                    path_parts.append(folder_name)
-                parent = self.tree.parent(parent)
+            current = item
+            while current:
+                parent_text = self.tree.item(current)["text"]
+                # 對於父項目也需要處理文字以獲取純名稱
+                for i, part in enumerate(parent_text.split(" ")):
+                    if part in [self.folder_icon, self.file_icon]:
+                        if current != item:  # 不包含檔案名
+                            folder_name = " ".join(parent_text.split(" ")[i+1:])
+                            path_parts.append(folder_name)
+                        break
+                current = self.tree.parent(current)
 
             # 反轉路徑部分並組合
             path_parts.reverse()
@@ -881,9 +889,15 @@ class WebsiteCopier:
 
         # 監控下載進度的線程
         def monitor_downloads():
+            completed = 0
+            total = len(futures)
             for future in futures:
                 try:
-                    future.result()
+                    if future.result():
+                        completed += 1
+                        # 更新總進度
+                        progress = (completed / total) * 100
+                        self.window.after(0, lambda p=progress: self.progress_var.set(p))
                 except Exception as e:
                     print(f"下載出錯: {str(e)}")
 
