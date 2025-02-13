@@ -12,13 +12,19 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: "pip"
+        timeout-minutes: 5
+        retries: 3
 
       - name: Install dependencies
         run: |
@@ -34,6 +40,7 @@ jobs:
 
   build:
     needs: lint
+    timeout-minutes: 30
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -47,46 +54,59 @@ jobs:
           - os: ubuntu-latest
             output_name: index_ripper
             tkinter_install: sudo apt-get install -y python3-tk
+      fail-fast: false
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up Python 3.10
+        id: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: "pip"
+        timeout-minutes: 5
+        retries: 3
 
       - name: Install system dependencies (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           ${{ matrix.tkinter_install }}
+        timeout-minutes: 5
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           brew update
           ${{ matrix.tkinter_install }}
+        timeout-minutes: 5
 
       - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
         run: ${{ matrix.tkinter_install }}
+        timeout-minutes: 5
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller pytest
+        timeout-minutes: 10
 
       - name: Test with pytest
         run: |
           python -m pytest
+        timeout-minutes: 10
 
       - name: Build executable
         run: |
           pyinstaller --onefile --windowed --name index_ripper index_ripper.py
+        timeout-minutes: 15
 
       - name: Make executable (Unix)
         if: runner.os != 'Windows'
@@ -98,3 +118,4 @@ jobs:
           name: index-ripper-${{ runner.os }}
           path: dist/${{ matrix.output_name }}
           compression-level: 0 # 不壓縮二進制檔案
+        timeout-minutes: 5
