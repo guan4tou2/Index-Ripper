@@ -32,7 +32,7 @@ class WebsiteCopier:
         self.is_scanning = False
 
         # URL和過濾區域
-        self.url_frame = ttk.LabelFrame(self.window, text="網址和過濾設置")
+        self.url_frame = ttk.LabelFrame(self.window, text="網址和選取設置")
         self.url_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # URL輸入
@@ -44,7 +44,7 @@ class WebsiteCopier:
 
 
         # 修改檔案類型過濾區域
-        filter_frame = ttk.LabelFrame(self.url_frame, text="檔案類型過濾")
+        filter_frame = ttk.LabelFrame(self.url_frame, text="檔案類型選擇")
         filter_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # 檔案類型勾選框容器
@@ -1110,10 +1110,12 @@ class WebsiteCopier:
             for item in self._type_files[ext]:
                 if self.tree.exists(item):
                     if is_selected:
+                        # 使用 toggle_check 來設置選中狀態
                         self.toggle_check(item, force_check=True)
                         # 展開到該檔案的路徑
                         self._expand_to_item(item)
                     else:
+                        # 使用 toggle_check 來設置未選中狀態
                         self.toggle_check(item, force_uncheck=True)
 
         # 更新檔案可見性
@@ -1161,7 +1163,16 @@ class WebsiteCopier:
 
     def _refresh_item_visibility(self, item):
         """遞迴更新項目的可見性"""
+        if not self.tree.exists(item):
+            return False
+
         is_folder = "folder" in self.tree.item(item)["tags"]
+        current_tags = list(self.tree.item(item)["tags"])
+        
+        # 保留重要的標籤
+        base_tags = [tag for tag in current_tags if tag in 
+                     ("checked", "unchecked", "file", "folder", 
+                      "arrow_hover", "arrow_zone", "name_zone")]
 
         if is_folder:
             # 遞迴處理子項目
@@ -1172,23 +1183,27 @@ class WebsiteCopier:
 
             # 如果資料夾有可見的子項目，則顯示資料夾
             if has_visible_children:
-                self.tree.item(item, tags=("folder", "unchecked"))
+                self.tree.item(item, tags=base_tags)
                 return True
             else:
-                self.tree.item(item, tags=("folder", "unchecked", "hidden"))
+                self.tree.item(item, tags=base_tags + ["hidden"])
                 return False
         else:
             # 檢查檔案類型是否被選中
             file_name = " ".join(self.tree.item(item)["text"].split()[2:])
+
             ext = os.path.splitext(file_name)[1].lower()
             if not ext:
                 ext = "(無副檔名)"
+            if ext.startswith("."):
+                ext = ext[1:]
+            ext = f".{ext}"
 
             if ext in self.file_types and self.file_types[ext].get():
-                self.tree.item(item, tags=("file", "unchecked"))
+                self.tree.item(item, tags=base_tags)
                 return True
             else:
-                self.tree.item(item, tags=("file", "unchecked", "hidden"))
+                self.tree.item(item, tags=base_tags + ["hidden"])
                 return False
 
     def _expand_to_item(self, item):
