@@ -19,150 +19,164 @@ from urllib3.util.retry import Retry
 class WebsiteCopier:
     def __init__(self):
         self.window = tk.Tk()
-        self.window.title("網站檔案下載器")
+        self.window.title("Website File Downloader")
         self.window.geometry("1000x800")
 
-        # 下載控制
+        # Download control
         self.pause_event = Event()
         self.current_downloads = []
 
-        # 添加掃描控制
+        # Add scan control
         self.scan_pause_event = Event()
-        self.scan_pause_event.set()  # 初始設置為未暫停
+        self.scan_pause_event.set()  # Initially set to not paused
         self.is_scanning = False
 
-        # URL和過濾區域
-        self.url_frame = ttk.LabelFrame(self.window, text="網址和選取設置")
+        # URL and filter area
+        self.url_frame = ttk.LabelFrame(self.window, text="URL and Selection Settings")
         self.url_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # URL輸入
+        # URL input
         url_input_frame = ttk.Frame(self.url_frame)
         url_input_frame.pack(fill=tk.X, padx=5, pady=5)
-        ttk.Label(url_input_frame, text="網址:").pack(side=tk.LEFT)
+        ttk.Label(url_input_frame, text="URL:").pack(side=tk.LEFT)
         self.url_entry = ttk.Entry(url_input_frame)
         self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-
-        # 修改檔案類型過濾區域
-        filter_frame = ttk.LabelFrame(self.url_frame, text="檔案類型選擇")
+        # Modify file type filter area
+        filter_frame = ttk.LabelFrame(self.url_frame, text="File Type Selection")
         filter_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 檔案類型勾選框容器
+        # File type checkbox container
         self.filter_checkboxes_frame = ttk.Frame(filter_frame)
         self.filter_checkboxes_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 用於存儲檔案類型的變數
+        # Variable to store file types
         self.file_types = {}  # {'.pdf': BooleanVar(), '.jpg': BooleanVar(), ...}
-        self.file_type_counts = {}  # {'.pdf': 0, '.jpg': 0, ...} 用於記錄每種類型的檔案數量
+        self.file_type_counts = {}  # {'.pdf': 0, '.jpg': 0, ...} Used to track file count for each type
 
-        # 全選/取消全選按鈕
+        # Select/deselect all buttons
         select_buttons_frame = ttk.Frame(filter_frame)
         select_buttons_frame.pack(fill=tk.X, padx=5, pady=2)
         ttk.Button(
-            select_buttons_frame, text="全選", command=self.select_all_types
+            select_buttons_frame, text="Select All", command=self.select_all_types
         ).pack(side=tk.LEFT, padx=2)
         ttk.Button(
-            select_buttons_frame, text="取消全選", command=self.deselect_all_types
+            select_buttons_frame, text="Deselect All", command=self.deselect_all_types
         ).pack(side=tk.LEFT, padx=2)
 
-        # 修改掃描按鈕區域
+        # Modify scan button area
         scan_buttons_frame = ttk.Frame(self.url_frame)
         scan_buttons_frame.pack(pady=5)
 
         self.scan_btn = ttk.Button(
-            scan_buttons_frame, text="掃描", command=self.start_scan
+            scan_buttons_frame, text="Scan", command=self.start_scan
         )
         self.scan_btn.pack(side=tk.LEFT, padx=5)
 
         self.scan_pause_btn = ttk.Button(
             scan_buttons_frame,
-            text="暫停掃描",
+            text="Pause Scan",
             command=self.toggle_scan_pause,
             state=tk.DISABLED,
         )
         self.scan_pause_btn.pack(side=tk.LEFT, padx=5)
 
-        # 檔案列表區域
-        self.tree_frame = ttk.LabelFrame(self.window, text="檔案列表")
+        # File list area
+        self.tree_frame = ttk.LabelFrame(self.window, text="File List")
         self.tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         self.tree = ttk.Treeview(
             self.tree_frame,
             selectmode="none",
             show=("tree", "headings"),
-            style="Custom.Treeview",  # 使用自定義樣式
+            style="Custom.Treeview",  # Use custom style
         )
 
-        # 修改自定義樣式配置
+        # Modify custom style configuration
         style = ttk.Style()
         style.configure(
             "Custom.Treeview",
             rowheight=25,
-            background="#ffffff",
-            fieldbackground="#ffffff",
+            background="#2f3542",  # 深色背景
+            fieldbackground="#2f3542",  # 保持一致的背景
+            foreground="#ffffff",  # 白色文字
             borderwidth=1,
-            relief="solid"
+            relief="solid",
         )
-        
-        # 配置選中項目的背景顏色
+
+        # Configure selected item background color
         style.map(
             "Custom.Treeview",
-            background=[("selected", "#e6f3ff")]
+            background=[("selected", "#3742fa")],  # 深藍色選中背景
+            foreground=[("selected", "#ffffff")],  # 選中時保持白色文字
         )
-        
-        # 添加標籤配置 - 修改優先級順序
-        self.tree.tag_configure("unchecked", background="#ffffff")  # 基本背景
-        self.tree.tag_configure("checked", background="#e6ffe6")  # 選中背景
-        self.tree.tag_configure("name_zone", background="#ffffff")  # 名稱區域
-        self.tree.tag_configure("arrow_zone", background="#f0f0f0")  # 箭頭區域
-        self.tree.tag_configure("arrow_hover", background="#e0e0e0")  # 箭頭懸停效果
 
-        # 設置表格列標題樣式
+        # Add tag configuration - Modify priority order
+        self.tree.tag_configure("unchecked", background="#2f3542")  # 基本背景
+        self.tree.tag_configure("checked", background="#2ed573")  # 綠色選中背景
+        self.tree.tag_configure("name_zone", background="#2f3542")  # 名稱區域
+        self.tree.tag_configure("arrow_zone", background="#353b48")  # 箭頭區域
+        self.tree.tag_configure("arrow_hover", background="#404859")  # 箭頭懸停效果
+        self.tree.tag_configure("hidden", foreground="#747d8c")  # 隱藏項目使用灰色
+
+        # Set table column title style
         style.configure(
             "Treeview.Heading",
+            background="#353b48",  # 表頭背景色
+            foreground="#ffffff",  # 表頭文字顏色
+            relief="solid",
             borderwidth=1,
-            relief="solid"
         )
-        
-        # 設置顯示模式（只能使用 tree 和 headings）
+
+        # Configure hover effect
+        style.map(
+            "Treeview.Heading",
+            background=[("active", "#404859")],  # 表頭懸停效果
+        )
+
+        # Set alternating row colors
+        self.tree.tag_configure("oddrow", background="#2f3542")  # 深色背景
+        self.tree.tag_configure("evenrow", background="#353b48")  # 稍淺的深色背景
+
+        # Set display mode (only use tree and headings)
         self.tree.configure(style="Custom.Treeview", show=("tree", "headings"))
 
-        # 設置列配置
+        # Set column configuration
         self.tree["columns"] = ("size", "type")
-        self.tree.heading("#0", text="名稱", command=lambda: self.sort_tree("name"))
-        self.tree.heading("size", text="大小", command=lambda: self.sort_tree("size"))
-        self.tree.heading("type", text="類型", command=lambda: self.sort_tree("type"))
+        self.tree.heading("#0", text="Name", command=lambda: self.sort_tree("name"))
+        self.tree.heading("size", text="Size", command=lambda: self.sort_tree("size"))
+        self.tree.heading("type", text="Type", command=lambda: self.sort_tree("type"))
 
-        # 設置列寬
+        # Set column width
         self.tree.column("#0", minwidth=300, width=400)
         self.tree.column("size", width=100)
         self.tree.column("type", width=150)
 
-        # 綁定右鍵選單
+        # Bind right-click menu
         self.tree.bind("<Button-3>", self.show_context_menu)
 
-        # 創建右鍵選單
+        # Create right-click menu
         self.context_menu = tk.Menu(self.window, tearoff=0)
-        self.context_menu.add_command(label="全選", command=self.select_all)
-        self.context_menu.add_command(label="取消全選", command=self.deselect_all)
+        self.context_menu.add_command(label="Select All", command=self.select_all)
+        self.context_menu.add_command(label="Deselect All", command=self.deselect_all)
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="展開所有", command=self.expand_all)
-        self.context_menu.add_command(label="收起所有", command=self.collapse_all)
+        self.context_menu.add_command(label="Expand All", command=self.expand_all)
+        self.context_menu.add_command(label="Collapse All", command=self.collapse_all)
 
-        # 排序狀態
+        # Sort status
         self.sort_column = None
         self.sort_reverse = False
 
-        # 用於追踪勾選狀態
+        # Used to track checked status
         self.checked_items = set()
 
-        # 修改勾選框圖標
-        self.checkbox_unchecked = ""  # 空字串，不顯示未選中框
-        self.checkbox_checked = "✅"  # 已選中
-        self.folder_icon = "📁"  # 資料夾
-        self.file_icon = "📄"  # 檔案
+        # Modify checkbox icon
+        self.checkbox_unchecked = ""  # Empty string, no unchecked box
+        self.checkbox_checked = "✅"  # Checked
+        self.folder_icon = "📁"  # Folder
+        self.file_icon = "📄"  # File
 
-        # 用於追踪資料夾結構
+        # Used to track folder structure
         self.folders = {}
 
         self.scrollbar = ttk.Scrollbar(
@@ -173,30 +187,37 @@ class WebsiteCopier:
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # 修改綁定事件
+        # Modify binding events
         self.tree.bind("<Button-1>", self.on_tree_click)
 
-        # 下載控制區域
+        # Download control area
         control_frame = ttk.Frame(self.window)
         control_frame.pack(fill=tk.X, padx=5, pady=5)
 
         self.download_btn = ttk.Button(
-            control_frame, text="下載選擇的檔案", command=self.download_selected
+            control_frame,
+            text="Download Selected Files",
+            command=self.download_selected,
         )
         self.download_btn.pack(side=tk.LEFT, padx=5)
 
         self.pause_btn = ttk.Button(
-            control_frame, text="暫停下載", command=self.toggle_pause, state=tk.DISABLED
+            control_frame,
+            text="Pause Download",
+            command=self.toggle_pause,
+            state=tk.DISABLED,
         )
         self.pause_btn.pack(side=tk.LEFT, padx=5)
 
         self.path_btn = ttk.Button(
-            control_frame, text="選擇下載位置", command=self.choose_download_path
+            control_frame,
+            text="Choose Download Location",
+            command=self.choose_download_path,
         )
         self.path_btn.pack(side=tk.LEFT, padx=5)
 
-        # 進度條
-        self.progress_frame = ttk.LabelFrame(self.window, text="進度")
+        # Progress bar
+        self.progress_frame = ttk.LabelFrame(self.window, text="Progress")
         self.progress_frame.pack(fill=tk.X, padx=5, pady=5)
 
         self.progress_var = tk.DoubleVar()
@@ -208,19 +229,19 @@ class WebsiteCopier:
         self.progress_label = ttk.Label(self.progress_frame, text="")
         self.progress_label.pack(pady=2)
 
-        # 添加新的初始化變數
+        # Add new initial variables
         self.files_dict = {}
-        self.download_path = ""  # 初始化為空字串
+        self.download_path = ""  # Initialize as empty string
         self.is_paused = False
         self.download_queue = Queue()
-        self.max_workers = 3  # 同時下載的最大檔案數
+        self.max_workers = 3  # Maximum files to download at once
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
         self.active_downloads = []
 
-        # 添加下載線程數量控制
+        # Add download thread count control
         threads_frame = ttk.Frame(control_frame)
         threads_frame.pack(side=tk.LEFT, padx=5)
-        ttk.Label(threads_frame, text="同時下載數:").pack(side=tk.LEFT)
+        ttk.Label(threads_frame, text="Concurrent Downloads:").pack(side=tk.LEFT)
         self.threads_var = tk.StringVar(value="3")
         threads_spinbox = ttk.Spinbox(
             threads_frame,
@@ -232,74 +253,79 @@ class WebsiteCopier:
         )
         threads_spinbox.pack(side=tk.LEFT)
 
-        # 配置 requests session
+        # Configure requests session
         self.session = requests.Session()
         retry_strategy = Retry(
-            total=3,  # 總重試次數
-            backoff_factor=1,  # 重試間隔
-            status_forcelist=[500, 502, 503, 504],  # 需要重試的HTTP狀態碼
+            total=3,  # Total retry count
+            backoff_factor=1,  # Retry interval
+            status_forcelist=[
+                500,
+                502,
+                503,
+                504,
+            ],  # HTTP status codes that need to be retried
         )
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
-            pool_connections=10,  # 連接池大小
-            pool_maxsize=10,  # 最大連接數
-            pool_block=False,  # 連接池滿時不阻塞
+            pool_connections=10,  # Connection pool size
+            pool_maxsize=10,  # Maximum connections
+            pool_block=False,  # Do not block when pool is full
         )
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
-        # 設置更長的超時時間
-        self.timeout = (10, 30)  # (連接超時, 讀取超時)
+        # Set longer timeout
+        self.timeout = (10, 30)  # (Connection timeout, read timeout)
 
-        # 添加掃描進度變數
+        # Add scan progress variables
         self.total_urls = 0
         self.scanned_urls = 0
 
-        # 添加視窗關閉事件處理
+        # Add window close event handling
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        # 添加線程控制
+        # Add thread control
         self.should_stop = False
 
-        # 綁定滑鼠移動和離開事件
-        self.tree.bind('<Motion>', self.on_mouse_move)
-        self.tree.bind('<Leave>', self.on_mouse_leave)
+        # Bind mouse move and leave events
+        self.tree.bind("<Motion>", self.on_mouse_move)
+        self.tree.bind("<Leave>", self.on_mouse_leave)
 
     def choose_download_path(self):
-        path = filedialog.askdirectory(title="選擇下載位置")
+        path = filedialog.askdirectory(title="Choose Download Location")
         if path:
             self.download_path = path
 
     def toggle_pause(self):
         if self.is_paused:
             self.pause_event.set()
-            self.pause_btn.configure(text="暫停下載")
+            self.pause_btn.configure(text="Pause Download")
             self.is_paused = False
         else:
             self.pause_event.clear()
-            self.pause_btn.configure(text="繼續下載")
+            self.pause_btn.configure(text="Resume Download")
             self.is_paused = True
 
     def toggle_scan_pause(self):
-        """切換掃描暫停狀態"""
+        """Toggle scan pause state"""
         if self.scan_pause_event.is_set():
             self.scan_pause_event.clear()
-            self.scan_pause_btn.configure(text="繼續掃描")
-            self.progress_label.config(text="掃描已暫停")
+            self.scan_pause_btn.configure(text="Resume Scan")
+            self.progress_label.config(text="Scan paused")
         else:
             self.scan_pause_event.set()
-            self.scan_pause_btn.configure(text="暫停掃描")
+            self.scan_pause_btn.configure(text="Pause Scan")
 
     def filter_file_type(self, file_name):
-        """檢查檔案是否應該顯示"""
+        """Check if file should be displayed"""
         ext = os.path.splitext(file_name)[1].lower()
         if not ext:
-            ext = "(無副檔名)"
+            ext = "(No Extension)"
         if ext.startswith("."):
             ext = ext[1:]
         ext = f".{ext}"
 
-        # 檢查是否存在相同的檔案類型（忽略大小寫）
+        # Check if same file type exists (case insensitive)
         existing_ext = next(
             (e for e in self.file_types.keys() if e.lower() == ext.lower()), None
         )
@@ -307,45 +333,45 @@ class WebsiteCopier:
         return existing_ext is not None and self.file_types[existing_ext].get()
 
     def create_folder_structure(self, path, url):
-        """創建資料夾結構並返回最後一個資料夾的ID"""
-        print("\n=== 開始創建資料夾結構 ===")
-        print(f"原始路徑: {path}")
-        print(f"原始URL: {url}")
+        """Create folder structure and return ID of last folder"""
+        print("\n=== Starting Folder Structure Creation ===")
+        print(f"Original path: {path}")
+        print(f"Original URL: {url}")
 
-        # 標準化路徑格式並進行URL解碼
+        # Standardize path format and decode URL
         path = unquote(path.replace("\\", "/"))
         path = posixpath.normpath(path).strip("/")
-        print(f"標準化後的路徑: {path}")
-        print(f"現有資料夾: {list(self.folders.keys())}")
+        print(f"Standardized path: {path}")
+        print(f"Existing folders: {list(self.folders.keys())}")
 
         if not path:
             return ""
 
-        # 使用完整路徑作為唯一標識
+        # Use full path as unique identifier
         parts = path.split("/")
         current_path = ""
         parent = ""
 
         for part in parts:
-            if not part:  # 跳過空的部分
+            if not part:  # Skip empty parts
                 continue
 
             current_path = posixpath.join(current_path, part) if current_path else part
-            print(f"\n處理資料夾: {part}")
-            print(f"當前完整路徑: {current_path}")
+            print(f"\nProcessing folder: {part}")
+            print(f"Current full path: {current_path}")
 
-            # 檢查完整路徑是否已存在
+            # Check if full path already exists
             if current_path in self.folders:
-                print(f"找到現有資料夾: {current_path}")
+                print(f"Found existing folder: {current_path}")
                 parent = self.folders[current_path]["id"]
                 continue
 
-            print(f"創建新資料夾: {current_path}")
+            print(f"Creating new folder: {current_path}")
             folder_id = self.tree.insert(
                 parent,
                 "end",
-                text=f"{self.folder_icon} {part}",  # 移除未選中框
-                values=("", "目錄"),
+                text=f"{self.folder_icon} {part}",  # Remove unchecked box
+                values=("", "Directory"),
                 tags=("folder", "unchecked"),
             )
             self.folders[current_path] = {
@@ -355,11 +381,11 @@ class WebsiteCopier:
             }
             parent = folder_id
 
-        print("\n=== 資料夾結構創建完成 ===")
+        print("\n=== Folder Structure Creation Completed ===")
         return parent
 
     def _get_ancestors(self, item):
-        """獲取項目的所有祖先節點"""
+        """Get all ancestor nodes of an item"""
         ancestors = []
         parent = self.tree.parent(item)
         while parent:
@@ -368,60 +394,60 @@ class WebsiteCopier:
         return ancestors
 
     def on_tree_click(self, event):
-        """處理樹狀圖點擊事件"""
-        print("\n=== 處理點擊事件 ===")
+        """Handle tree item click event"""
+        print("\n=== Handling Click Event ===")
         item = self.tree.identify("item", event.x, event.y)
         if not item:
             return
 
-        # 計算點擊位置
+        # Calculate click position
         item_x = int(self.tree.bbox(item)[0])
         relative_x = event.x - item_x
-        
-        # 定義箭頭區域寬度
+
+        # Define arrow area width
         arrow_width = 30
-        
-        print(f"相對點擊位置: {relative_x}")
-        
+
+        print(f"Relative click position: {relative_x}")
+
         if relative_x < arrow_width:
-            print("點擊箭頭區域")
-            # 展開/收合資料夾的預設行為
+            print("Clicked arrow area")
+            # Default behavior for expanding/collapsing folder
             return
         else:
-            print("點擊項目區域")
+            print("Clicked item area")
             self.toggle_check(item)
 
     def toggle_check(self, item, force_check=None, force_uncheck=None):
-        """切換項目的勾選狀態"""
-        print("\n=== 開始切換勾選狀態 ===")
-        print(f"處理項目ID: {item}")
+        """Toggle item checked status"""
+        print("\n=== Starting Toggle Check Status ===")
+        print(f"Processing item ID: {item}")
 
         if not self.tree.exists(item):
-            print("錯誤：項目不存在")
+            print("Error: Item does not exist")
             return
 
-        # 獲取當前項目資訊
+        # Get current item information
         current_item = self.tree.item(item)
         text = current_item["text"]
         tags = current_item["tags"]
-        print(f"當前文字: {text}")
-        print(f"當前標籤: {tags}")
+        print(f"Current text: {text}")
+        print(f"Current tags: {tags}")
 
-        # 移除所有勾選框，只保留最後的圖標和名稱
+        # Remove all checkboxes, keep only the last icon and name
         text_parts = text.split(" ")
-        # 從後往前找到第一個圖標（📁 或 📄）
+        # Find the first icon (📁 or 📄) from the end
         for i, part in enumerate(text_parts):
             if part in [self.folder_icon, self.file_icon]:
                 icon = part
-                name = " ".join(text_parts[i+1:])
+                name = " ".join(text_parts[i + 1 :])
                 break
         else:
-            print(f"錯誤：找不到有效的圖標 - {text}")
+            print(f"Error: No valid icon found - {text}")
             return
 
         is_checked = "checked" in tags
 
-        # 決定新的勾選狀態
+        # Decide new checked status
         if force_check is not None:
             is_checked = force_check
         elif force_uncheck is not None:
@@ -429,7 +455,7 @@ class WebsiteCopier:
         else:
             is_checked = not is_checked
 
-        # 更新文字和標籤
+        # Update text and tags
         if is_checked:
             new_text = f"{self.checkbox_checked} {icon} {name}"
         else:
@@ -438,50 +464,50 @@ class WebsiteCopier:
         new_tags = [tag for tag in tags if tag not in ("checked", "unchecked")]
         new_tags.append("checked" if is_checked else "unchecked")
 
-        # 更新項目
+        # Update item
         self.tree.item(item, text=new_text, tags=new_tags)
 
-        # 更新勾選集合
+        # Update checked set
         if is_checked:
             self.checked_items.add(item)
         else:
             self.checked_items.discard(item)
 
-        # 如果是資料夾，遞迴處理子項目
+        # If it's a folder, recursively process child items
         if "folder" in tags:
             for child in self.tree.get_children(item):
                 self.toggle_check(child, force_check=is_checked)
 
-        print("=== 切換勾選狀態完成 ===\n")
+        print("=== Toggle Check Status Completed ===\n")
 
     def scan_website(self, url):
         try:
             self.is_scanning = True
             self.scan_pause_btn.configure(state=tk.NORMAL)
-            self.progress_label.config(text="正在掃描網站...")
+            self.progress_label.config(text="Scanning website...")
             self.scan_btn.configure(state=tk.DISABLED)
 
-            # 清除現有記錄
+            # Clear existing records
             self.folders.clear()
             self.tree.delete(*self.tree.get_children())
             self.files_dict.clear()
 
-            # 重置掃描進度
+            # Reset scan progress
             self.total_urls = 0
             self.scanned_urls = 0
 
-            # 先獲取所有URL
+            # First get all URLs
             all_urls = self._get_all_urls(url)
             self.total_urls = len(all_urls)
 
-            # 使用線程池處理URL
+            # Use thread pool to process URLs
             with ThreadPoolExecutor(max_workers=10) as executor:
                 futures = []
                 for url_info in all_urls:
-                    if self.should_stop:  # 檢查是否應該停止
+                    if self.should_stop:  # Check if should stop
                         break
 
-                    # 等待繼續掃描
+                    # Wait to continue scan
                     self.scan_pause_event.wait()
 
                     if url_info["is_directory"]:
@@ -493,57 +519,62 @@ class WebsiteCopier:
                             executor.submit(self._process_file, url_info["url"])
                         )
 
-                # 等待所有任務完成
+                # Wait for all tasks to complete
                 for future in futures:
-                    if self.should_stop:  # 檢查是否應該停止
+                    if self.should_stop:  # Check if should stop
                         break
                     try:
                         future.result()
                     except Exception as e:
-                        print(f"處理URL時發生錯誤: {str(e)}")
+                        print(f"Error processing URL: {str(e)}")
                     finally:
-                        if self.is_scanning:  # 只在掃描未取消時更新進度
+                        if (
+                            self.is_scanning
+                        ):  # Update progress only when scan is not canceled
                             self.scanned_urls += 1
                             self._update_scan_progress()
 
-            if not self.should_stop:  # 只在正常完成時顯示結果
+            if not self.should_stop:  # Show result only when completed normally
                 if not self.files_dict:
-                    messagebox.showinfo("提示", "未找到任何檔案")
+                    messagebox.showinfo("Info", "No files found")
                 else:
                     messagebox.showinfo(
-                        "完成", f"掃描完成，共找到 {len(self.files_dict)} 個檔案"
+                        "Completed",
+                        f"Scan completed, found {len(self.files_dict)} files",
                     )
 
         except Exception as e:
-            if self.is_scanning and not self.should_stop:  # 只在掃描未取消時顯示錯誤
-                messagebox.showerror("錯誤", f"掃描時發生未知錯誤: {str(e)}")
+            if (
+                self.is_scanning and not self.should_stop
+            ):  # Show error only when scan is not canceled
+                messagebox.showerror("Error", f"Unknown error occurred: {str(e)}")
         finally:
             self.is_scanning = False
-            self.scan_btn.configure(state=tk.NORMAL, text="掃描")
+            self.scan_btn.configure(state=tk.NORMAL, text="Scan")
             self.scan_pause_btn.configure(state=tk.DISABLED)
-            self.scan_pause_event.set()  # 重置暫停狀態
+            self.scan_pause_event.set()  # Reset pause state
             self.progress_label.config(text="")
 
     def _print_file_list(self):
-        """輸出檔案列表到控制台"""
-        print("\n=== 掃描結果 ===")
-        print(f"共找到 {len(self.files_dict)} 個檔案")
-        print("\n檔案列表:")
+        """Output file list to console"""
+        print("\n=== Scan Results ===")
+        print(f"Found {len(self.files_dict)} files")
+        print("\nFile List:")
 
         def print_item(item, level=0):
             item_text = self.tree.item(item)["text"]
             values = self.tree.item(item)["values"]
             tags = self.tree.item(item)["tags"]
 
-            # 移除勾選框和圖標，只保留名稱
+            # Remove checkbox and icon, keep only name
             name = " ".join(item_text.split()[2:])
 
-            # 根據層級添加縮進
+            # Add indentation based on level
             indent = "  " * level
 
             if "folder" in tags:
                 print(f"{indent}📁 {name}/")
-                # 遞迴輸出子項目
+                # Recursively output child items
                 for child in self.tree.get_children(item):
                     print_item(child, level + 1)
             else:
@@ -551,14 +582,14 @@ class WebsiteCopier:
                 file_type = values[1] if len(values) > 1 else "Unknown"
                 print(f"{indent}📄 {name} ({size}, {file_type})")
 
-        # 從根節點開始遍歷
+        # Start from root node
         for item in self.tree.get_children():
             print_item(item)
 
-        print("\n=== 結束 ===\n")
+        print("\n=== End ===\n")
 
     def _get_all_urls(self, url, scanned_urls=None, base_url=None):
-        """獲取所有需要處理的URL"""
+        """Get all URLs that need to be processed"""
         if scanned_urls is None:
             scanned_urls = set()
             base_url = url
@@ -581,7 +612,7 @@ class WebsiteCopier:
 
             soup = BeautifulSoup(response.text, "html.parser")
 
-            # 使用集合來去重
+            # Use set to remove duplicates
             unique_urls = set()
 
             for link in soup.find_all("a"):
@@ -596,12 +627,12 @@ class WebsiteCopier:
                 parsed = urlparse(full_url)
                 normalized_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
-                # 標準化路徑
+                # Standardize path
                 path = parsed.path.rstrip("/")
                 if not path:
                     continue
 
-                # 如果URL已經處理過，跳過
+                # If URL has been processed, skip
                 if normalized_url in unique_urls:
                     continue
 
@@ -616,7 +647,7 @@ class WebsiteCopier:
 
                 urls.append(url_info)
 
-                # 如果是目錄且未掃描過，遞迴處理
+                # If it's a directory and not scanned, recursively process
                 if is_directory and normalized_url not in scanned_urls:
                     urls.extend(
                         self._get_all_urls(normalized_url, scanned_urls, base_url)
@@ -625,54 +656,54 @@ class WebsiteCopier:
             return urls
 
         except Exception as e:
-            print(f"獲取URL列表時發生錯誤: {str(e)}")
+            print(f"Error getting URL list: {str(e)}")
             return []
 
     def _update_scan_progress(self):
-        """更新掃描進度"""
+        """Update scan progress"""
         if self.total_urls > 0:
             progress = (self.scanned_urls / self.total_urls) * 100
             self.progress_var.set(progress)
             self.progress_label.config(
-                text=f"掃描進度... ({self.scanned_urls}/{self.total_urls}) {progress:.1f}%"
+                text=f"Scan progress... ({self.scanned_urls}/{self.total_urls}) {progress:.1f}%"
             )
             self.window.update_idletasks()
 
     def _process_directory(self, url):
-        """處理目錄"""
+        """Process directory"""
         try:
             parsed_path = urlparse(url).path
             dir_path = parsed_path.rstrip("/")
             self.create_folder_structure(dir_path, url)
         except Exception as e:
-            print(f"處理目錄時發生錯誤: {str(e)}")
+            print(f"Error processing directory: {str(e)}")
 
     def _process_file(self, url):
-        """處理檔案"""
+        """Process file"""
         try:
-            print("\n=== 開始處理檔案 ===")
-            print(f"處理URL: {url}")
+            print("\n=== Starting File Processing ===")
+            print(f"Processing URL: {url}")
 
             parsed = urlparse(url)
             file_name = unquote(os.path.basename(parsed.path))
             dir_path = unquote(os.path.dirname(parsed.path))
 
-            print(f"檔案名稱: {file_name}")
-            print(f"目錄路徑: {dir_path}")
+            print(f"File name: {file_name}")
+            print(f"Directory path: {dir_path}")
 
             if not file_name:
                 return
 
-            # 標準化路徑
+            # Standardize path
             full_path = os.path.join(dir_path, file_name).replace("\\", "/")
             if full_path.startswith("/"):
                 full_path = full_path[1:]
 
-            print(f"完整路徑: {full_path}")
+            print(f"Full path: {full_path}")
 
-            # 檢查檔案是否已存在
+            # Check if file already exists
             if full_path in self.files_dict:
-                print(f"檔案已存在: {full_path}")
+                print(f"File already exists: {full_path}")
                 return
 
             try:
@@ -684,10 +715,10 @@ class WebsiteCopier:
 
                 file_type = head.headers.get("content-type", "Unknown")
 
-                # 先更新檔案類型列表
+                # First update file type list
                 self.window.after(0, lambda: self.update_file_types(file_name))
 
-                # 在主線程中創建資料夾結構和添加檔案
+                # Create folder structure and add file in main thread
                 self.window.after(
                     0,
                     lambda: self._safe_create_folder_and_add_file(
@@ -699,37 +730,41 @@ class WebsiteCopier:
                 pass
 
         except Exception as e:
-            print(f"處理檔案時發生錯誤: {str(e)}")
+            print(f"Error processing file: {str(e)}")
 
     def _safe_create_folder_and_add_file(
         self, dir_path, url, file_name, size, file_type, full_path
     ):
-        """在主線程中安全地創建資料夾和添加檔案"""
+        """Create folder structure and add file in main thread"""
         try:
             parent_id = self.create_folder_structure(dir_path, url)
             self._add_file_to_tree(
                 parent_id, file_name, size, file_type, full_path, url
             )
         except Exception as e:
-            print(f"添加檔案到樹狀結構時發生錯誤: {str(e)}")
+            print(f"Error adding file to tree structure: {str(e)}")
 
     def _add_file_to_tree(self, parent_id, file_name, size, file_type, full_path, url):
-        """在主線程中添加檔案到樹狀結構"""
+        """Add file to tree structure in main thread"""
         try:
-            # 添加檔案時不顯示未選中框
+            # Get current number of items to determine odd/even row
+            items_count = len(self.tree.get_children(parent_id))
+            row_tags = ["evenrow"] if items_count % 2 == 0 else ["oddrow"]
+
+            # Add file without unchecked box
             item_id = self.tree.insert(
                 parent_id,
                 "end",
-                text=f"{self.file_icon} {file_name}",  # 移除未選中框
+                text=f"{self.file_icon} {file_name}",
                 values=(size, file_type),
-                tags=("file", "unchecked"),
+                tags=("file", "unchecked") + tuple(row_tags),
             )
             self.files_dict[full_path] = url
 
-            # 將檔案項目添加到對應的檔案類型集合中
+            # Add file item to corresponding file type set
             ext = os.path.splitext(file_name)[1].lower()
             if not ext:
-                ext = "(無副檔名)"
+                ext = "(No Extension)"
             if ext.startswith("."):
                 ext = ext[1:]
             ext = f".{ext}"
@@ -739,14 +774,14 @@ class WebsiteCopier:
                     self._type_files[ext] = set()
                 self._type_files[ext].add(item_id)
 
-            # 確保父資料夾是展開的
+            # Ensure parent folder is expanded
             current = parent_id
             while current:
                 self.tree.item(current, open=True)
                 current = self.tree.parent(current)
 
         except Exception as e:
-            print(f"添加檔案到樹狀結構時發生錯誤: {str(e)}")
+            print(f"Error adding file to tree structure: {str(e)}")
 
     def update_thread_count(self):
         try:
@@ -789,16 +824,16 @@ class WebsiteCopier:
             return True
 
         except requests.exceptions.RequestException as e:
-            error_msg = "網路錯誤"
+            error_msg = "Network error"
             if isinstance(e, requests.exceptions.ConnectTimeout):
-                error_msg = "連接超時"
+                error_msg = "Connection timeout"
             elif isinstance(e, requests.exceptions.ConnectionError):
-                error_msg = "連接失敗"
+                error_msg = "Connection failed"
             elif isinstance(e, requests.exceptions.ReadTimeout):
-                error_msg = "讀取超時"
+                error_msg = "Read timeout"
 
             messagebox.showerror(
-                "錯誤", f"下載 {file_name} 時發生{error_msg}: {str(e)}"
+                "Error", f"Error downloading {file_name}: {error_msg}: {str(e)}"
             )
             return False
 
@@ -807,15 +842,15 @@ class WebsiteCopier:
 
     def _update_progress(self, file_name, progress):
         self.progress_var.set(progress)
-        self.progress_label.config(text=f"正在下載: {file_name} ({progress:.1f}%)")
+        self.progress_label.config(text=f"Downloading: {file_name} ({progress:.1f}%)")
 
     def download_selected(self):
-        """下載已勾選的檔案"""
+        """Download checked files"""
         if not self.checked_items:
-            messagebox.showwarning("警告", "請選擇要下載的檔案")
+            messagebox.showwarning("Warning", "Please select files to download")
             return
 
-        # 過濾掉資料夾，只下載檔案
+        # Filter out folders, only download files
         files_to_download = [
             item
             for item in self.checked_items
@@ -823,10 +858,10 @@ class WebsiteCopier:
         ]
 
         if not files_to_download:
-            messagebox.showwarning("警告", "請選擇要下載的檔案")
+            messagebox.showwarning("Warning", "Please select files to download")
             return
 
-        # 如果沒有選擇下載路徑，使用預設路徑
+        # If no download path selected, use default
         if not self.download_path:
             self.download_path = os.path.join(os.getcwd(), "downloads")
 
@@ -836,47 +871,47 @@ class WebsiteCopier:
         self.pause_event.set()
         self.pause_btn.configure(state=tk.NORMAL)
 
-        # 切換到下載進度顯示
-        self.progress_frame.configure(text="下載進度")
+        # Switch to download progress display
+        self.progress_frame.configure(text="Download Progress")
         self.progress_var.set(0)
-        self.progress_label.config(text="準備下載...")
+        self.progress_label.config(text="Preparing to download...")
 
-        # 創建下載任務
+        # Create download tasks
         futures = []
         for item in files_to_download:
-            # 獲取檔案名稱（移除勾選框和圖標）
+            # Get file name (remove checkbox and icon)
             text_parts = self.tree.item(item)["text"].split(" ")
             for i, part in enumerate(text_parts):
                 if part in [self.folder_icon, self.file_icon]:
-                    file_name = " ".join(text_parts[i+1:])
+                    file_name = " ".join(text_parts[i + 1 :])
                     break
             else:
                 continue
 
-            # 構建檔案的完整路徑
+            # Build full path for file
             path_parts = []
             current = item
             while current:
                 parent_text = self.tree.item(current)["text"]
-                # 對於父項目也需要處理文字以獲取純名稱
+                # Also process text for parent items to get pure name
                 for i, part in enumerate(parent_text.split(" ")):
                     if part in [self.folder_icon, self.file_icon]:
-                        if current != item:  # 不包含檔案名
-                            folder_name = " ".join(parent_text.split(" ")[i+1:])
+                        if current != item:  # Exclude file name
+                            folder_name = " ".join(parent_text.split(" ")[i + 1 :])
                             path_parts.append(folder_name)
                         break
                 current = self.tree.parent(current)
 
-            # 反轉路徑部分並組合
+            # Reverse path parts and combine
             path_parts.reverse()
             relative_path = os.path.join(*path_parts) if path_parts else ""
 
-            # 創建目標目錄
+            # Create target directory
             target_dir = os.path.join(self.download_path, relative_path)
             if not os.path.exists(target_dir):
                 os.makedirs(target_dir)
 
-            # 獲取下載URL
+            # Get download URL
             full_path = os.path.join(relative_path, file_name).replace("\\", "/")
             url = self.files_dict.get(full_path)
 
@@ -887,7 +922,7 @@ class WebsiteCopier:
                 )
                 futures.append(future)
 
-        # 監控下載進度的線程
+        # Monitor download progress thread
         def monitor_downloads():
             completed = 0
             total = len(futures)
@@ -895,70 +930,72 @@ class WebsiteCopier:
                 try:
                     if future.result():
                         completed += 1
-                        # 更新總進度
+                        # Update total progress
                         progress = (completed / total) * 100
-                        self.window.after(0, lambda p=progress: self.progress_var.set(p))
+                        self.window.after(
+                            0, lambda p=progress: self.progress_var.set(p)
+                        )
                 except Exception as e:
-                    print(f"下載出錯: {str(e)}")
+                    print(f"Download error: {str(e)}")
 
             self.window.after(0, lambda: self._downloads_completed())
 
         threading.Thread(target=monitor_downloads).start()
 
     def _downloads_completed(self):
-        self.progress_label.config(text="下載完成")
+        self.progress_label.config(text="Download completed")
         self.pause_btn.configure(state=tk.DISABLED)
-        messagebox.showinfo("完成", "選擇的檔案已下載完成")
+        messagebox.showinfo("Completed", "Selected files downloaded successfully")
 
     def start_scan(self):
         url = self.url_entry.get()
         if not url:
-            messagebox.showerror("錯誤", "請輸入網址")
+            messagebox.showerror("Error", "Please enter URL")
             return
 
-        # 設置下載路徑為網站名稱
+        # Set download path to website name
         try:
             parsed_url = urlparse(url)
-            site_name = parsed_url.netloc.split(":")[0]  # 移除可能的端口號
+            site_name = parsed_url.netloc.split(":")[0]  # Remove possible port number
             self.download_path = os.path.join(os.getcwd(), site_name)
         except Exception as e:
-            print(f"設置下載路徑時發生錯誤: {str(e)}")
+            print(f"Error setting download path: {str(e)}")
             self.download_path = os.path.join(os.getcwd(), "downloads")
 
-        # 如果正在掃描，則取消掃描
+        # If scanning, cancel scan
         if self.is_scanning:
             self.is_scanning = False
-            self.scan_btn.configure(text="掃描")
+            self.scan_btn.configure(text="Scan")
             return
 
-        # 重置進度條和文字
-        self.progress_frame.configure(text="掃描進度")
+        # Reset progress bar and text
+        self.progress_frame.configure(text="Scan Progress")
         self.progress_var.set(0)
-        self.progress_label.config(text="準備掃描...")
+        self.progress_label.config(text="Preparing to scan...")
 
-        self.scan_btn.configure(text="停止掃描")
+        self.scan_btn.configure(text="Stop Scan")
         Thread(target=self.scan_website, args=(url,)).start()
 
     def run(self):
         self.window.mainloop()
 
     def show_context_menu(self, event):
-        """顯示右鍵選單"""
+        """Show right-click menu"""
         self.context_menu.post(event.x_root, event.y_root)
 
     def select_all(self):
-        """全選所有項目"""
+        """Select all items"""
 
         def check_all(parent=""):
             for item in self.tree.get_children(parent):
                 self.toggle_check(item, force_check=True)
-                if self.tree.get_children(item):  # 如果有子項目
+                if self.tree.get_children(item):  # If there are child items
                     check_all(item)
 
         check_all()
 
     def deselect_all(self):
-        """取消全選"""
+        """Deselect all"""
 
         def uncheck_all(parent=""):
             for item in self.tree.get_children(parent):
@@ -969,12 +1006,12 @@ class WebsiteCopier:
         uncheck_all()
 
     def expand_all(self):
-        """展開所有資料夾"""
+        """Expand all folders"""
 
         def expand(parent=""):
             for item in self.tree.get_children(parent):
                 if "folder" in self.tree.item(item)["tags"]:
-                    # 保持原有的標籤和勾選狀態
+                    # Keep original tags and checked status
                     current_tags = self.tree.item(item)["tags"]
                     self.tree.item(item, open=True, tags=current_tags)
                 expand(item)
@@ -982,12 +1019,12 @@ class WebsiteCopier:
         expand()
 
     def collapse_all(self):
-        """收起所有資料夾"""
+        """Collapse all folders"""
 
         def collapse(parent=""):
             for item in self.tree.get_children(parent):
                 if "folder" in self.tree.item(item)["tags"]:
-                    # 保持原有的標籤和勾選狀態
+                    # Keep original tags and checked status
                     current_tags = self.tree.item(item)["tags"]
                     self.tree.item(item, open=False, tags=current_tags)
                 collapse(item)
@@ -995,8 +1032,8 @@ class WebsiteCopier:
         collapse()
 
     def sort_tree(self, column):
-        """排序樹狀結構"""
-        # 如果點擊相同列，切換排序順序
+        """Sort tree structure"""
+        # If clicked on same column, switch sort order
         if self.sort_column == column:
             self.sort_reverse = not self.sort_reverse
         else:
@@ -1015,79 +1052,79 @@ class WebsiteCopier:
             else:
                 return self.tree.item(item)["values"][1].lower()
 
-        # 分別排序資料夾和檔案
+        # Sort folders and files separately
         def sort_level(parent=""):
             items = self.tree.get_children(parent)
-            # 分離資料夾和檔案
+            # Separate folders and files
             folders = [
                 item for item in items if "folder" in self.tree.item(item)["tags"]
             ]
             files = [item for item in items if "file" in self.tree.item(item)["tags"]]
 
-            # 排序資料夾和檔案
+            # Sort folders and files
             sorted_folders = sorted(
                 folders, key=get_sort_key, reverse=self.sort_reverse
             )
             sorted_files = sorted(files, key=get_sort_key, reverse=self.sort_reverse)
 
-            # 重新排列項目
+            # Re-arrange items
             for idx, item in enumerate(sorted_folders + sorted_files):
                 self.tree.move(item, parent, idx)
-                # 遞迴排序子項目
+                # Recursively sort child items
                 if self.tree.get_children(item):
                     sort_level(item)
 
         sort_level()
 
     def on_closing(self):
-        """處理視窗關閉事件"""
+        """Handle window close event"""
         self.should_stop = True
         self.is_scanning = False
 
-        # 等待所有線程完成
+        # Wait for all threads to complete
         if hasattr(self, "executor"):
             self.executor.shutdown(wait=False)
 
         self.window.destroy()
-        os._exit(0)  # 強制結束所有線程
+        os._exit(0)  # Force terminate all threads
 
     def update_file_types(self, file_name):
-        """更新檔案類型列表"""
+        """Update file type list"""
         ext = os.path.splitext(file_name)[1].lower()
         if not ext:
-            ext = "(無副檔名)"
+            ext = "(No Extension)"
 
-        # 標準化檔案類型
+        # Standardize file type
         if ext.startswith("."):
-            ext = ext[1:]  # 移除開頭的點
-        ext = f".{ext}"  # 統一添加點
+            ext = ext[1:]  # Remove leading dot
+        ext = f".{ext}"  # Ensure leading dot
 
-        # 檢查是否已存在相同的檔案類型（忽略大小寫）
+        # Check if same file type exists (case insensitive)
         existing_ext = next(
             (e for e in self.file_types.keys() if e.lower() == ext.lower()), None
         )
 
         if existing_ext:
-            ext = existing_ext  # 使用已存在的大小寫形式
+            ext = existing_ext  # Use existing case form
             self.file_type_counts[ext] += 1
-            # 更新勾選框文字
+            # Update checkbox text
             self.window.after(0, lambda: self._update_type_label(ext))
         else:
-            # 創建新的檔案類型
+            # Create new file type
             self.file_types[ext] = tk.BooleanVar(value=False)
             self.file_type_counts[ext] = 1
             if not hasattr(self, "_type_files"):
                 self._type_files = {}
             self._type_files[ext] = set()
-            # 在UI中添加新的勾選框
+            # Add new checkbox in UI
             self.window.after(0, lambda: self._add_type_checkbox(ext))
 
     def _add_type_checkbox(self, ext):
-        """添加檔案類型勾選框"""
+        """Add file type checkbox"""
         frame = ttk.Frame(self.filter_checkboxes_frame)
         frame.pack(side=tk.LEFT, padx=2)
 
-        # 創建勾選框，並綁定選擇事件
+        # Create checkbox and bind selection event
         cb = ttk.Checkbutton(
             frame,
             text=f"{ext} ({self.file_type_counts[ext]})",
@@ -1096,92 +1133,110 @@ class WebsiteCopier:
         )
         cb.pack(side=tk.LEFT)
 
-        # 保存勾選框引用以便更新
+        # Save checkbox reference for updating
         if not hasattr(self, "_type_checkboxes"):
             self._type_checkboxes = {}
         self._type_checkboxes[ext] = cb
 
     def _on_type_selected(self, ext):
-        """處理檔案類型選擇事件"""
+        """Handle file type selection event"""
         is_selected = self.file_types[ext].get()
 
-        # 更新所有相關檔案的選擇狀態
+        # Update selection status for all related files
         if hasattr(self, "_type_files") and ext in self._type_files:
             for item in self._type_files[ext]:
                 if self.tree.exists(item):
                     if is_selected:
-                        # 使用 toggle_check 來設置選中狀態
+                        # Use toggle_check to set selected status
                         self.toggle_check(item, force_check=True)
-                        # 展開到該檔案的路徑
+                        # Expand to path of that file
                         self._expand_to_item(item)
                     else:
-                        # 使用 toggle_check 來設置未選中狀態
+                        # Use toggle_check to set unselected status
                         self.toggle_check(item, force_uncheck=True)
 
-        # 更新檔案可見性
+        # Update file visibility
         self.refresh_file_list()
 
     def _update_type_label(self, ext):
-        """更新檔案類型勾選框的文字"""
+        """Update file type checkbox text"""
         if hasattr(self, "_type_checkboxes") and ext in self._type_checkboxes:
             self._type_checkboxes[ext].configure(
                 text=f"{ext} ({self.file_type_counts[ext]})"
             )
 
     def select_all_types(self):
-        """全選所有檔案類型"""
-        # 設置所有檔案類型為選中
+        """Select all file types"""
+        # Set all file types to selected
         for ext, var in self.file_types.items():
             var.set(True)
-            # 選中該類型的所有檔案
+            # Select all files of that type
             if hasattr(self, "_type_files") and ext in self._type_files:
                 for item in self._type_files[ext]:
                     if self.tree.exists(item):
                         self.toggle_check(item, force_check=True)
 
-        # 更新檔案可見性
+        # Update file visibility
         self.refresh_file_list()
 
     def deselect_all_types(self):
-        """取消全選所有檔案類型"""
-        # 設置所有檔案類型為未選中
+        """Deselect all file types"""
+        # Set all file types to unselected
         for ext, var in self.file_types.items():
             var.set(False)
-            # 取消選中該類型的所有檔案
+            # Deselect all files of that type
             if hasattr(self, "_type_files") and ext in self._type_files:
                 for item in self._type_files[ext]:
                     if self.tree.exists(item):
                         self.toggle_check(item, force_uncheck=True)
 
-        # 更新檔案可見性
+        # Update file visibility
         self.refresh_file_list()
 
     def refresh_file_list(self):
-        """根據選擇的檔案類型重新過濾檔案列表"""
-        for item in self.tree.get_children():
+        """Re-filter file list based on selected file types"""
+        for idx, item in enumerate(self.tree.get_children()):
+            row_tags = ["evenrow"] if idx % 2 == 0 else ["oddrow"]
+            current_tags = list(self.tree.item(item)["tags"])
+            # Keep important tags but update row color tag
+            base_tags = [
+                tag for tag in current_tags if tag not in ("evenrow", "oddrow")
+            ]
+            self.tree.item(item, tags=base_tags + row_tags)
             self._refresh_item_visibility(item)
 
     def _refresh_item_visibility(self, item):
-        """遞迴更新項目的可見性"""
+        """Recursively update item visibility"""
         if not self.tree.exists(item):
             return False
 
         is_folder = "folder" in self.tree.item(item)["tags"]
         current_tags = list(self.tree.item(item)["tags"])
-        
-        # 保留重要的標籤
-        base_tags = [tag for tag in current_tags if tag in 
-                     ("checked", "unchecked", "file", "folder", 
-                      "arrow_hover", "arrow_zone", "name_zone")]
+
+        # Keep important tags
+        base_tags = [
+            tag
+            for tag in current_tags
+            if tag
+            in (
+                "checked",
+                "unchecked",
+                "file",
+                "folder",
+                "arrow_hover",
+                "arrow_zone",
+                "name_zone",
+            )
+        ]
 
         if is_folder:
-            # 遞迴處理子項目
+            # Recursively process child items
             has_visible_children = False
             for child in self.tree.get_children(item):
                 if self._refresh_item_visibility(child):
                     has_visible_children = True
 
-            # 如果資料夾有可見的子項目，則顯示資料夾
+            # If folder has visible child items, show folder
             if has_visible_children:
                 self.tree.item(item, tags=base_tags)
                 return True
@@ -1189,12 +1244,12 @@ class WebsiteCopier:
                 self.tree.item(item, tags=base_tags + ["hidden"])
                 return False
         else:
-            # 檢查檔案類型是否被選中
+            # Check if file type is selected
             file_name = " ".join(self.tree.item(item)["text"].split()[2:])
 
             ext = os.path.splitext(file_name)[1].lower()
             if not ext:
-                ext = "(無副檔名)"
+                ext = "(No Extension)"
             if ext.startswith("."):
                 ext = ext[1:]
             ext = f".{ext}"
@@ -1207,78 +1262,84 @@ class WebsiteCopier:
                 return False
 
     def _expand_to_item(self, item):
-        """展開到指定項目的路徑"""
+        """Expand to specified item path"""
         parent = self.tree.parent(item)
         while parent:
             self.tree.item(parent, open=True)
             parent = self.tree.parent(parent)
 
     def setup_tree(self):
-        """設置檔案樹狀圖"""
-        print("\n=== 初始化樹狀圖 ===")
-        
-        # 建立樹狀圖框架
+        """Set up file tree"""
+        print("\n=== Initializing Tree ===")
+
+        # Set up tree frame
         self.tree_frame = ttk.Frame(self.window)
         self.tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # 自定義樹狀圖樣式
+        # Custom tree style
         style = ttk.Style()
-        style.configure("Custom.Treeview", 
-                       indent=30,
-                       background="#ffffff",
-                       fieldbackground="#ffffff")
-
-        # 建立樹狀圖和捲動條
-        self.tree = ttk.Treeview(
-            self.tree_frame, 
-            columns=("size", "type"), 
-            selectmode="none",
-            style="Custom.Treeview"
+        style.configure(
+            "Custom.Treeview",
+            indent=30,
+            background="#ffffff",
+            fieldbackground="#ffffff",
         )
-        
-        # 設置不同區域的標籤和樣式
-        self.tree.tag_configure('arrow_zone', background='#f0f0f0')  # 箭頭區域
-        self.tree.tag_configure('checkbox_zone', background='#e8e8e8')  # 勾選框區域
-        self.tree.tag_configure('name_zone', background='#ffffff')  # 名稱區域
-        
-        # 綁定滑鼠移動事件來顯示區域
-        self.tree.bind('<Motion>', self.on_mouse_move)
-        self.tree.bind("<Button-1>", self.on_tree_click)
-        
-        # 設置列標題
-        self.tree.heading("#0", text="名稱")
-        self.tree.heading("size", text="大小")
-        self.tree.heading("type", text="類型")
 
-        # 設置列寬度
+        # Set up tree and scrollbar
+        self.tree = ttk.Treeview(
+            self.tree_frame,
+            columns=("size", "type"),
+            selectmode="none",
+            style="Custom.Treeview",
+        )
+
+        # Set up different area labels and styles
+        self.tree.tag_configure("arrow_zone", background="#f0f0f0")  # Arrow area
+        self.tree.tag_configure("checkbox_zone", background="#e8e8e8")  # Checkbox area
+        self.tree.tag_configure("name_zone", background="#ffffff")  # Name area
+
+        # Bind mouse move event to show area
+        self.tree.bind("<Motion>", self.on_mouse_move)
+        self.tree.bind("<Button-1>", self.on_tree_click)
+
+        # Set column titles
+        self.tree.heading("#0", text="Name")
+        self.tree.heading("size", text="Size")
+        self.tree.heading("type", text="Type")
+
+        # Set column width
         self.tree.column("#0", width=400, minwidth=200)
         self.tree.column("size", width=100)
         self.tree.column("type", width=100)
 
-        print("樹狀圖設置完成")
+        print("Tree setup completed")
 
     def on_mouse_move(self, event):
-        """處理滑鼠移動事件"""
+        """Handle mouse move event"""
         item = self.tree.identify("item", event.x, event.y)
         if not item:
             return
 
-        # 清除所有項目的懸停效果
+        # Clear all item hover effects
         self._clear_hover_effects()
 
-        # 根據滑鼠位置設置背景色
+        # Set background color based on mouse position
         region = self.tree.identify("region", event.x, event.y)
         if region == "tree":
-            # 計算不同區域的x座標範圍
-            item_x = int(self.tree.bbox(item)[0])  # 項目起始x座標
-            arrow_width = 30  # 箭頭區域寬度
-            
-            # 獲取當前項目的標籤
+            # Calculate different area x coordinate ranges
+            item_x = int(self.tree.bbox(item)[0])  # Item start x coordinate
+            arrow_width = 30  # Arrow area width
+
+            # Get current item tags
             current_tags = list(self.tree.item(item)["tags"])
-            base_tags = [tag for tag in current_tags if tag in ("checked", "unchecked", "file", "folder")]
-            
+            base_tags = [
+                tag
+                for tag in current_tags
+                if tag in ("checked", "unchecked", "file", "folder")
+            ]
+
             if event.x < item_x + arrow_width:
-                # 檢查是否是資料夾（有子項目）
+                # Check if it's a folder (has child items)
                 if self.tree.get_children(item):
                     self.tree.item(item, tags=base_tags + ["arrow_hover"])
                     self.tree.configure(cursor="hand2")
@@ -1290,26 +1351,30 @@ class WebsiteCopier:
                 self.tree.configure(cursor="")
 
     def on_mouse_leave(self, event):
-        """處理滑鼠離開事件"""
+        """Handle mouse leave event"""
         self._clear_hover_effects()
         self.tree.configure(cursor="")
 
     def _clear_hover_effects(self):
-        """清除所有懸停效果"""
+        """Clear all hover effects"""
         for item in self.tree.get_children(""):
             self._clear_item_hover(item)
 
     def _clear_item_hover(self, item):
-        """清除單個項目的懸停效果"""
+        """Clear single item hover effects"""
         if not self.tree.exists(item):
             return
-        
+
         current_tags = list(self.tree.item(item)["tags"])
-        # 保留基本標籤
-        base_tags = [tag for tag in current_tags if tag in ("checked", "unchecked", "file", "folder")]
+        # Keep basic tags
+        base_tags = [
+            tag
+            for tag in current_tags
+            if tag in ("checked", "unchecked", "file", "folder")
+        ]
         self.tree.item(item, tags=base_tags)
-        
-        # 遞迴處理子項目
+
+        # Recursively process child items
         for child in self.tree.get_children(item):
             self._clear_item_hover(child)
 
