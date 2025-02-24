@@ -97,28 +97,36 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: dist/${{ matrix.output_name }}
 
-      - name: Generate release tag
-        id: tag
+      - name: Generate release tag (Windows)
+        if: matrix.os == 'windows-latest'
+        id: tag_windows
+        shell: pwsh
         run: |
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            echo "release_tag=v$(Get-Date -Format 'yyyy.MM.dd_HHmm')" >> $env:GITHUB_OUTPUT
-          else
-            echo "release_tag=v$(date +'%Y.%m.%d_%H%M')" >> $GITHUB_OUTPUT
-          fi
+          $tag = "v" + (Get-Date -Format "yyyy.MM.dd_HHmm")
+          echo "release_tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Generate release tag (macOS)
+        if: matrix.os == 'macos-latest'
+        id: tag_macos
+        shell: bash
+        run: |
+          echo "release_tag=v$(date +'%Y.%m.%d_%H%M')" >> $GITHUB_OUTPUT
 
       - name: Create tag
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          git tag ${{ steps.tag.outputs.release_tag }}
-          git push origin ${{ steps.tag.outputs.release_tag }}
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git tag ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
+          git push origin ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           files: dist/${{ matrix.output_name }}
-          tag_name: ${{ steps.tag.outputs.release_tag }}
-          name: Release ${{ steps.tag.outputs.release_tag }}
+          tag_name: ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
+          name: Release ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
           draft: false
           prerelease: false
         env:
