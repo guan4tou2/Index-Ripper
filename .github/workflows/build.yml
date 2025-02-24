@@ -1,4 +1,4 @@
-name: Build EXE
+name: Build Executables
 
 on:
   push:
@@ -12,7 +12,18 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+        include:
+          - os: windows-latest
+            output_name: IndexRipper.exe
+            artifact_name: IndexRipper-Windows
+          - os: macos-latest
+            output_name: IndexRipper
+            artifact_name: IndexRipper-MacOS
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -32,14 +43,23 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (Windows)
+        if: matrix.os == 'windows-latest'
         run: |
           # Add tkinter to hidden imports
           pyinstaller --onefile --windowed --icon=app.ico --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
 
-      - name: Test executable
+      - name: Build with PyInstaller (MacOS)
+        if: matrix.os == 'macos-latest'
         run: |
-          # Simple test to check if exe was created
+          # Add tkinter to hidden imports
+          pyinstaller --onefile --windowed --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+          # Make the file executable
+          chmod +x dist/IndexRipper
+
+      - name: Test executable (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
           if (Test-Path "dist/IndexRipper.exe") {
               Write-Host "EXE file created successfully"
           } else {
@@ -47,22 +67,32 @@ jobs:
               exit 1
           }
 
+      - name: Test executable (MacOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          if [ -f "dist/IndexRipper" ]; then
+            echo "Binary file created successfully"
+          else
+            echo "Binary file not found"
+            exit 1
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: IndexRipper
-          path: dist/IndexRipper.exe
+          name: ${{ matrix.artifact_name }}
+          path: dist/${{ matrix.output_name }}
 
       - name: Generate release tag
         id: tag
         run: |
-          echo "::set-output name=release_tag::v$(date +'%Y.%m.%d_%H%M')"
+          echo "release_tag=v$(date +'%Y.%m.%d_%H%M')" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
-          files: dist/IndexRipper.exe
+          files: dist/${{ matrix.output_name }}
           tag_name: ${{ steps.tag.outputs.release_tag }}
           name: Release ${{ steps.tag.outputs.release_tag }}
           draft: false
