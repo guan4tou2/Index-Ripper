@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -29,6 +32,11 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Create Icon
+        run: |
+          pip install Pillow
+          python create_icon.py
+
       - name: Build with PyInstaller
         run: |
           # Add tkinter to hidden imports
@@ -50,13 +58,18 @@ jobs:
           name: IndexRipper
           path: dist/IndexRipper.exe
 
+      - name: Generate release tag
+        id: tag
+        run: |
+          echo "::set-output name=release_tag::v$(date +'%Y.%m.%d_%H%M')"
+
       - name: Create Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           files: dist/IndexRipper.exe
-          tag_name: v${{ github.run_number }}
-          name: Release v${{ github.run_number }}
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: Release ${{ steps.tag.outputs.release_tag }}
           draft: false
           prerelease: false
         env:
