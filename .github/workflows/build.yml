@@ -69,7 +69,7 @@ jobs:
           # Add tkinter to hidden imports
           pyinstaller --onefile --windowed --name=IndexRipper_MacOS --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
           # Make the file executable
-          chmod +x dist/IndexRipper_MacOS.app/Contents/MacOS/IndexRipper_MacOS
+          # chmod +x dist/IndexRipper_MacOS.app
 
       - name: Test executable (Windows)
         if: matrix.os == 'windows-latest'
