@@ -32,11 +32,6 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Create Icon
-        run: |
-          pip install Pillow
-          python create_icon.py
-
       - name: Build with PyInstaller
         run: |
           # Add tkinter to hidden imports
