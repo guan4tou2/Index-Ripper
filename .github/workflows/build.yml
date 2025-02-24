@@ -74,7 +74,7 @@ jobs:
       - name: Test executable (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          if (Test-Path "dist/IndexRipper.exe") {
+          if (Test-Path "dist/IndexRipper_Windows.exe") {
               Write-Host "EXE file created successfully"
           } else {
               Write-Error "EXE file not found"
@@ -84,7 +84,7 @@ jobs:
       - name: Test executable (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          if [ -f "dist/IndexRipper" ]; then
+          if [ -f "dist/IndexRipper_MacOS.app" ]; then
             echo "Binary file created successfully"
           else
             echo "Binary file not found"
