@@ -68,8 +68,10 @@ jobs:
         run: |
           # Add tkinter to hidden imports
           pyinstaller --onefile --windowed --name=IndexRipper_MacOS --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
-          # Make the file executable
-          # chmod +x dist/IndexRipper_MacOS.app
+          # Create .app bundle
+          mkdir -p dist/IndexRipper_MacOS.app/Contents/MacOS
+          mv dist/IndexRipper_MacOS dist/IndexRipper_MacOS.app/Contents/MacOS/
+          chmod +x dist/IndexRipper_MacOS.app/Contents/MacOS/IndexRipper_MacOS
 
       - name: Test executable (Windows)
         if: matrix.os == 'windows-latest'
@@ -84,10 +86,10 @@ jobs:
       - name: Test executable (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          if [ -d "dist/IndexRipper_MacOS.app" ]; then
+          if [ -d "dist/IndexRipper_MacOS.app" ] && [ -x "dist/IndexRipper_MacOS.app/Contents/MacOS/IndexRipper_MacOS" ]; then
             echo "App bundle created successfully"
           else
-            echo "App bundle not found"
+            echo "App bundle not found or executable missing"
             exit 1
           fi
 
@@ -97,37 +99,41 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: dist/${{ matrix.output_name }}
 
-      - name: Generate release tag (Windows)
-        if: matrix.os == 'windows-latest'
-        id: tag_windows
-        shell: pwsh
-        run: |
-          $tag = "v" + (Get-Date -Format "yyyy.MM.dd_HHmm") + "_win"
-          echo "release_tag=$tag" >> $env:GITHUB_OUTPUT
-
-      - name: Generate release tag (macOS)
-        if: matrix.os == 'macos-latest'
-        id: tag_macos
+      - name: Generate common release tag
+        id: tag
         shell: bash
         run: |
-          echo "release_tag=v$(date +'%Y.%m.%d_%H%M')_mac" >> $GITHUB_OUTPUT
-
-      - name: Create tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
-          git tag ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }} || true
-          git push origin ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }} || true
+          echo "release_tag=v$(date +'%Y.%m.%d_%H%M')" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        with:
-          files: dist/${{ matrix.output_name }}
-          tag_name: ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
-          name: Release ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            dist/${{ matrix.output_name }}
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: Release ${{ steps.tag.outputs.release_tag }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+
+  create-tag:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate release tag
+        id: tag
+        run: |
+          echo "release_tag=v$(date +'%Y.%m.%d_%H%M')" >> $GITHUB_OUTPUT
+
+      - name: Create tag
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git tag ${{ steps.tag.outputs.release_tag }}
+          git push origin ${{ steps.tag.outputs.release_tag }}
