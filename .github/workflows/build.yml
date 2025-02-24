@@ -66,30 +66,66 @@ jobs:
       - name: Build with PyInstaller (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          # Add tkinter to hidden imports
-          pyinstaller --onefile --windowed --name=IndexRipper_MacOS --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
-          # Create .app bundle
-          mkdir -p dist/IndexRipper_MacOS.app/Contents/MacOS
-          mv dist/IndexRipper_MacOS dist/IndexRipper_MacOS.app/Contents/MacOS/
-          chmod +x dist/IndexRipper_MacOS.app/Contents/MacOS/IndexRipper_MacOS
+          # Create .spec file for macOS app bundle
+          echo 'from PyInstaller.building.api import PYZ, EXE, COLLECT
+from PyInstaller.building.build_main import Analysis
+block_cipher = None
+a = Analysis(
+    ["index_ripper.py"],
+    pathex=[],
+    binaries=[],
+    datas=[],
+    hiddenimports=["tkinter", "tkinter.ttk"],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    [],
+    name="IndexRipper_MacOS",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=True,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=None,
+)
+app = BUNDLE(
+    exe,
+    name="IndexRipper_MacOS.app",
+    icon=None,
+    bundle_identifier="com.indexripper.app",
+)' > IndexRipper_MacOS.spec
 
-      - name: Test executable (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          if (Test-Path "dist/IndexRipper_Windows.exe") {
-              Write-Host "EXE file created successfully"
-          } else {
-              Write-Error "EXE file not found"
-              exit 1
-          }
+          # Build using the spec file
+          pyinstaller IndexRipper_MacOS.spec
 
       - name: Test executable (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          if [ -d "dist/IndexRipper_MacOS.app" ] && [ -x "dist/IndexRipper_MacOS.app/Contents/MacOS/IndexRipper_MacOS" ]; then
+          if [ -d "dist/IndexRipper_MacOS.app" ] && [ -d "dist/IndexRipper_MacOS.app/Contents/MacOS" ]; then
             echo "App bundle created successfully"
+            ls -la dist/IndexRipper_MacOS.app/Contents/MacOS/
           else
-            echo "App bundle not found or executable missing"
+            echo "App bundle not found or incomplete"
             exit 1
           fi
 
@@ -99,33 +135,12 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: dist/${{ matrix.output_name }}
 
-      - name: Generate common release tag
-        id: tag
-        shell: bash
-        run: |
-          echo "release_tag=v$(date +'%Y.%m.%d_%H%M')" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          files: |
-            dist/${{ matrix.output_name }}
-          tag_name: ${{ steps.tag.outputs.release_tag }}
-          name: Release ${{ steps.tag.outputs.release_tag }}
-          draft: false
-          prerelease: false
-          fail_on_unmatched_files: false
-
-  create-tag:
+  release:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
+    steps:
       - name: Generate release tag
         id: tag
         run: |
@@ -137,3 +152,21 @@ jobs:
           git config --global user.name "GitHub Actions"
           git tag ${{ steps.tag.outputs.release_tag }}
           git push origin ${{ steps.tag.outputs.release_tag }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            dist/**/*
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: Release ${{ steps.tag.outputs.release_tag }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
