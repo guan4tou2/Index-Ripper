@@ -17,7 +17,7 @@ jobs:
         os: [windows-latest, macos-latest]
         include:
           - os: windows-latest
-            output_name: IndexRipper_Windows.exe
+            output_name: IndexRipper_Windows
             artifact_name: IndexRipper-Windows
           - os: macos-latest
             output_name: IndexRipper_MacOS 
@@ -84,7 +84,7 @@ jobs:
       - name: Test executable (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          if [ -f "dist/IndexRipper_MacOS.app" ]; then
+          if [ -f "dist/IndexRipper_MacOS" ]; then
             echo "Binary file created successfully"
           else
             echo "Binary file not found"
