@@ -20,7 +20,7 @@ jobs:
             output_name: IndexRipper_Windows.exe
             artifact_name: IndexRipper-Windows
           - os: macos-latest
-            output_name: IndexRipper_MacOS.app
+            output_name: IndexRipper_MacOS 
             artifact_name: IndexRipper-MacOS
 
     runs-on: ${{ matrix.os }}
@@ -66,86 +66,76 @@ jobs:
       - name: Build with PyInstaller (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          # Build using the spec file
-          pyinstaller macos.spec
-          # Create app bundle structure
-          mkdir -p dist/IndexRipper_MacOS.app/Contents/MacOS
-          cp -r dist/IndexRipper_MacOS/* dist/IndexRipper_MacOS.app/Contents/MacOS/
-          # Create Info.plist
-          echo '<?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>IndexRipper_MacOS</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.indexripper.app</string>
-              <key>CFBundleName</key>
-              <string>IndexRipper</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0.0</string>
-              <key>LSMinimumSystemVersion</key>
-              <string>10.10.0</string>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-          </dict>
-          </plist>' > dist/IndexRipper_MacOS.app/Contents/Info.plist
+          # Add tkinter to hidden imports
+          pyinstaller --onefile --windowed --name=IndexRipper_MacOS --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+          # Make the file executable
+          chmod +x dist/IndexRipper_MacOS
+
+      - name: Test executable (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          if (Test-Path "dist/IndexRipper.exe") {
+              Write-Host "EXE file created successfully"
+          } else {
+              Write-Error "EXE file not found"
+              exit 1
+          }
 
       - name: Test executable (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          if [ -d "dist/IndexRipper_MacOS.app" ] && [ -d "dist/IndexRipper_MacOS.app/Contents/MacOS" ]; then
-            echo "App bundle created successfully"
-            ls -la dist/IndexRipper_MacOS.app/Contents/MacOS/
+          if [ -f "dist/IndexRipper" ]; then
+            echo "Binary file created successfully"
           else
-            echo "App bundle not found or incomplete"
+            echo "Binary file not found"
             exit 1
           fi
 
-      - name: Upload artifact
+      - name: Upload artifact(macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/${{ matrix.output_name }}.app
+
+      - name: Upload artifact(Windows)
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: dist/${{ matrix.output_name }}
 
-  release:
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+      - name: Generate release tag (Windows)
+        if: matrix.os == 'windows-latest'
+        id: tag_windows
+        shell: pwsh
+        run: |
+          $tag = "v" + (Get-Date -Format "yyyy.MM.dd_HHmm")
+          echo "release_tag=$tag" >> $env:GITHUB_OUTPUT
 
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # 需要完整的歷史記錄來創建標籤
-
-      - name: Generate release tag
-        id: tag
+      - name: Generate release tag (macOS)
+        if: matrix.os == 'macos-latest'
+        id: tag_macos
+        shell: bash
         run: |
           echo "release_tag=v$(date +'%Y.%m.%d_%H%M')" >> $GITHUB_OUTPUT
 
       - name: Create tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          git tag ${{ steps.tag.outputs.release_tag }}
-          git push origin ${{ steps.tag.outputs.release_tag }}
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
+          git tag ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
+          git push origin ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
-          files: |
-            dist/**/*
-          tag_name: ${{ steps.tag.outputs.release_tag }}
-          name: Release ${{ steps.tag.outputs.release_tag }}
+          files: dist/${{ matrix.output_name }}
+          tag_name: ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
+          name: Release ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
