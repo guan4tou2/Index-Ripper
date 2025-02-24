@@ -102,7 +102,7 @@ jobs:
         id: tag_windows
         shell: pwsh
         run: |
-          $tag = "v" + (Get-Date -Format "yyyy.MM.dd_HHmm")
+          $tag = "v" + (Get-Date -Format "yyyy.MM.dd_HHmm") + "_win"
           echo "release_tag=$tag" >> $env:GITHUB_OUTPUT
 
       - name: Generate release tag (macOS)
@@ -110,15 +110,15 @@ jobs:
         id: tag_macos
         shell: bash
         run: |
-          echo "release_tag=v$(date +'%Y.%m.%d_%H%M')" >> $GITHUB_OUTPUT
+          echo "release_tag=v$(date +'%Y.%m.%d_%H%M')_mac" >> $GITHUB_OUTPUT
 
       - name: Create tag
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          git tag ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
-          git push origin ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }}
+          git tag ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }} || true
+          git push origin ${{ matrix.os == 'windows-latest' && steps.tag_windows.outputs.release_tag || steps.tag_macos.outputs.release_tag }} || true
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
