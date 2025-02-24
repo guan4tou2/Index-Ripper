@@ -32,7 +32,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           brew update
-          brew install tkinter
+          brew install python-tk@3.10
 
       - name: Set up Python
         uses: actions/setup-python@v5
