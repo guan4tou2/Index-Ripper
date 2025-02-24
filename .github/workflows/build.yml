@@ -28,11 +28,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install macOS dependencies
+      - name: Setup macOS environment
         if: matrix.os == 'macos-latest'
         run: |
+          brew update
           brew install gettext
+          brew unlink gettext || true
           brew link gettext --force
+          echo "/usr/local/opt/gettext/bin" >> $GITHUB_PATH
+          echo "LDFLAGS=-L/usr/local/opt/gettext/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I/usr/local/opt/gettext/include" >> $GITHUB_ENV
 
       - name: Set up Python
         uses: actions/setup-python@v5
