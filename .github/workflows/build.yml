@@ -100,7 +100,17 @@ jobs:
       - name: Generate release tag
         id: tag
         run: |
-          echo "release_tag=v$(date +'%Y.%m.%d_%H%M')" >> $GITHUB_OUTPUT
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            echo "release_tag=v$(Get-Date -Format 'yyyy.MM.dd_HHmm')" >> $env:GITHUB_OUTPUT
+          else
+            echo "release_tag=v$(date +'%Y.%m.%d_%H%M')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git tag ${{ steps.tag.outputs.release_tag }}
+          git push origin ${{ steps.tag.outputs.release_tag }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
