@@ -66,10 +66,10 @@ jobs:
       - name: Build with PyInstaller (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          # Add tkinter to hidden imports
-          pyinstaller --onefile --windowed --name=IndexRipper_MacOS --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+          # Create app bundle
+          pyinstaller --windowed --name=IndexRipper_MacOS --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.icns index_ripper.py
           # Make the file executable
-          chmod +x dist/IndexRipper_MacOS
+          chmod +x "dist/IndexRipper_MacOS.app/Contents/MacOS/IndexRipper_MacOS"
 
       - name: Test executable (Windows)
         if: matrix.os == 'windows-latest'
@@ -84,10 +84,10 @@ jobs:
       - name: Test executable (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          if [ -f "dist/IndexRipper_MacOS" ]; then
-            echo "Binary file created successfully"
+          if [ -d "dist/IndexRipper_MacOS.app" ]; then
+            echo "App bundle created successfully"
           else
-            echo "Binary file not found"
+            echo "App bundle not found"
             exit 1
           fi
 
@@ -96,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: dist/${{ matrix.output_name }}
+          path: dist/IndexRipper_MacOS.app/
 
       - name: Upload artifact(Windows)
         if: matrix.os == 'windows-latest'
