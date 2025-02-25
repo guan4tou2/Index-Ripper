@@ -67,9 +67,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           # Create app bundle
-          pyinstaller --windowed --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.ico index_ripper.py
-          # Make the file executable
-          # chmod +x "dist/IndexRipper_MacOS.app/Contents/MacOS/IndexRipper_MacOS"
+          pyinstaller -F --windowed --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.ico index_ripper.py
 
       - name: Test executable (Windows)
         if: matrix.os == 'windows-latest'
@@ -86,10 +84,8 @@ jobs:
         run: |
           echo "Listing contents of dist directory:"
           ls -la dist/
-          if [ -d "dist/IndexRipper_MacOS.app" ]; then
+          if [ -d "dist/IndexRipper.app" ]; then
             echo "App bundle created successfully"
-            echo "Listing contents of app bundle:"
-            ls -la "dist/IndexRipper_MacOS.app/Contents/MacOS/"
           else
             echo "App bundle not found"
             exit 1
@@ -99,7 +95,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           cd dist
-          zip -r IndexRipper_MacOS.zip IndexRipper.app
+          zip -r IndexRipper.zip IndexRipper.app
           cd ..
 
       - name: Upload artifact(macOS)
