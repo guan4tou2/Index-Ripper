@@ -84,8 +84,12 @@ jobs:
       - name: Test executable (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          if [ -d "dist/IndexRipper.app" ]; then
+          echo "Listing contents of dist directory:"
+          ls -la dist/
+          if [ -d "dist/IndexRipper_MacOS.app" ]; then
             echo "App bundle created successfully"
+            echo "Listing contents of app bundle:"
+            ls -la "dist/IndexRipper_MacOS.app/Contents/MacOS/"
           else
             echo "App bundle not found"
             exit 1
