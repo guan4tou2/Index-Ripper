@@ -20,7 +20,7 @@ jobs:
             output_name: IndexRipper.exe
             artifact_name: IndexRipper-Windows
           - os: macos-latest
-            output_name: IndexRipper.zip
+            output_name: IndexRipper.app
             artifact_name: IndexRipper-MacOS
 
     runs-on: ${{ matrix.os }}
@@ -90,13 +90,6 @@ jobs:
             echo "App bundle not found"
             exit 1
           fi
-
-      - name: Package macOS App
-        if: matrix.os == 'macos-latest'
-        run: |
-          cd dist
-          zip -r IndexRipper.zip IndexRipper.app
-          cd ..
 
       - name: Upload artifact(macOS)
         if: matrix.os == 'macos-latest'
