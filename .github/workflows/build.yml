@@ -17,10 +17,10 @@ jobs:
         os: [windows-latest, macos-latest]
         include:
           - os: windows-latest
-            output_name: IndexRipper_Windows.exe
+            output_name: IndexRipper.exe
             artifact_name: IndexRipper-Windows
           - os: macos-latest
-            output_name: IndexRipper_MacOS.app
+            output_name: IndexRipper.app
             artifact_name: IndexRipper-MacOS
 
     runs-on: ${{ matrix.os }}
@@ -61,13 +61,13 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           # Add tkinter to hidden imports
-          pyinstaller --onefile --windowed --icon=app.ico --name=IndexRipper_Windows --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+          pyinstaller --onefile --windowed --icon=app.ico --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
 
       - name: Build with PyInstaller (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
           # Create app bundle
-          pyinstaller --windowed --name=IndexRipper_MacOS --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.icns index_ripper.py
+          pyinstaller --windowed --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.ico index_ripper.py
           # Make the file executable
           chmod +x "dist/IndexRipper_MacOS.app/Contents/MacOS/IndexRipper_MacOS"
 
