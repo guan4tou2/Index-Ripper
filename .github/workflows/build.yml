@@ -68,6 +68,8 @@ jobs:
         run: |
           # Create app bundle
           pyinstaller -F --windowed --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.ico index_ripper.py
+          # Remove the extra binary file
+          rm -f dist/IndexRipper
 
       - name: Test executable (Windows)
         if: matrix.os == 'windows-latest'
