@@ -69,7 +69,7 @@ jobs:
           # Create app bundle
           pyinstaller --windowed --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.ico index_ripper.py
           # Make the file executable
-          chmod +x "dist/IndexRipper_MacOS.app/Contents/MacOS/IndexRipper_MacOS"
+          # chmod +x "dist/IndexRipper_MacOS.app/Contents/MacOS/IndexRipper_MacOS"
 
       - name: Test executable (Windows)
         if: matrix.os == 'windows-latest'
