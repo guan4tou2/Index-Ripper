@@ -20,7 +20,7 @@ jobs:
             output_name: IndexRipper_Windows.exe
             artifact_name: IndexRipper-Windows
           - os: macos-latest
-            output_name: IndexRipper_MacOS 
+            output_name: IndexRipper_MacOS.app
             artifact_name: IndexRipper-MacOS
 
     runs-on: ${{ matrix.os }}
@@ -96,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: dist/${{ matrix.output_name }}.app
+          path: dist/${{ matrix.output_name }}
 
       - name: Upload artifact(Windows)
         if: matrix.os == 'windows-latest'
