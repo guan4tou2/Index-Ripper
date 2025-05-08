@@ -109,11 +109,11 @@ class WebsiteCopier:
         style = ttk.Style()
         style.configure(
             "Custom.Treeview",
-            rowheight=25,
-            background="#2f3542",  # 深色背景
-            fieldbackground="#2f3542",  # 保持一致的背景
-            foreground="#ffffff",  # 白色文字
-            borderwidth=1,
+            rowheight=30,  # 增加行高以提供更好的间距
+            background="#2f3542",
+            fieldbackground="#2f3542",
+            foreground="#ffffff",
+            borderwidth=2,
             relief="solid",
         )
 
@@ -138,7 +138,8 @@ class WebsiteCopier:
             background="#353b48",  # 表頭背景色
             foreground="#ffffff",  # 表頭文字顏色
             relief="solid",
-            borderwidth=1,
+            borderwidth=2,  # 增加边框宽度
+            font=("Arial", 10, "bold"),  # 加粗表头字体
         )
 
         # Configure hover effect
@@ -151,10 +152,18 @@ class WebsiteCopier:
         self.tree.tag_configure("oddrow", background="#2f3542")  # 深色背景
         self.tree.tag_configure("evenrow", background="#353b48")  # 稍淺的深色背景
 
+        # Add border to tree frame
+        self.tree_frame.configure(style="Border.TFrame")
+        style.configure(
+            "Border.TFrame",
+            borderwidth=2,
+            relief="solid",
+        )
+
         # Set display mode (only use tree and headings)
         self.tree.configure(style="Custom.Treeview", show=("tree", "headings"))
 
-        # Set column configuration
+        # Set column configuration with better spacing
         self.tree["columns"] = ("size", "type")
         self.tree.heading("#0", text="Name",
                           command=lambda: self.sort_tree("name"))
