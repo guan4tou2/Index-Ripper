@@ -31,8 +31,19 @@ class WebsiteCopier:
         self.scan_pause_event.set()  # Initially set to not paused
         self.is_scanning = False
 
+        # 添加线程锁，用于保护共享数据
+        self.files_dict_lock = threading.Lock()
+        self.folders_dict_lock = threading.Lock()
+
+        # 初始化队列和处理状态
+        self.dir_queue = Queue()
+        self.file_queue = Queue()
+        self.is_processing_dirs = False
+        self.is_processing_files = False
+
         # URL and filter area
-        self.url_frame = ttk.LabelFrame(self.window, text="URL and Selection Settings")
+        self.url_frame = ttk.LabelFrame(
+            self.window, text="URL and Selection Settings")
         self.url_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # URL input
@@ -43,7 +54,8 @@ class WebsiteCopier:
         self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Modify file type filter area
-        filter_frame = ttk.LabelFrame(self.url_frame, text="File Type Selection")
+        filter_frame = ttk.LabelFrame(
+            self.url_frame, text="File Type Selection")
         filter_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # File type checkbox container
@@ -52,7 +64,8 @@ class WebsiteCopier:
 
         # Variable to store file types
         self.file_types = {}  # {'.pdf': BooleanVar(), '.jpg': BooleanVar(), ...}
-        self.file_type_counts = {}  # {'.pdf': 0, '.jpg': 0, ...} Used to track file count for each type
+        # {'.pdf': 0, '.jpg': 0, ...} Used to track file count for each type
+        self.file_type_counts = {}
 
         # Select/deselect all buttons
         select_buttons_frame = ttk.Frame(filter_frame)
@@ -143,9 +156,12 @@ class WebsiteCopier:
 
         # Set column configuration
         self.tree["columns"] = ("size", "type")
-        self.tree.heading("#0", text="Name", command=lambda: self.sort_tree("name"))
-        self.tree.heading("size", text="Size", command=lambda: self.sort_tree("size"))
-        self.tree.heading("type", text="Type", command=lambda: self.sort_tree("type"))
+        self.tree.heading("#0", text="Name",
+                          command=lambda: self.sort_tree("name"))
+        self.tree.heading("size", text="Size",
+                          command=lambda: self.sort_tree("size"))
+        self.tree.heading("type", text="Type",
+                          command=lambda: self.sort_tree("type"))
 
         # Set column width
         self.tree.column("#0", minwidth=300, width=400)
@@ -157,11 +173,15 @@ class WebsiteCopier:
 
         # Create right-click menu
         self.context_menu = tk.Menu(self.window, tearoff=0)
-        self.context_menu.add_command(label="Select All", command=self.select_all)
-        self.context_menu.add_command(label="Deselect All", command=self.deselect_all)
+        self.context_menu.add_command(
+            label="Select All", command=self.select_all)
+        self.context_menu.add_command(
+            label="Deselect All", command=self.deselect_all)
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="Expand All", command=self.expand_all)
-        self.context_menu.add_command(label="Collapse All", command=self.collapse_all)
+        self.context_menu.add_command(
+            label="Expand All", command=self.expand_all)
+        self.context_menu.add_command(
+            label="Collapse All", command=self.collapse_all)
 
         # Sort status
         self.sort_column = None
@@ -229,19 +249,11 @@ class WebsiteCopier:
         self.progress_label = ttk.Label(self.progress_frame, text="")
         self.progress_label.pack(pady=2)
 
-        # Add new initial variables
-        self.files_dict = {}
-        self.download_path = ""  # Initialize as empty string
-        self.is_paused = False
-        self.download_queue = Queue()
-        self.max_workers = 3  # Maximum files to download at once
-        self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        self.active_downloads = []
-
-        # Add download thread count control
+        # Add thread download count control
         threads_frame = ttk.Frame(control_frame)
         threads_frame.pack(side=tk.LEFT, padx=5)
-        ttk.Label(threads_frame, text="Concurrent Downloads:").pack(side=tk.LEFT)
+        ttk.Label(threads_frame, text="Concurrent Downloads:").pack(
+            side=tk.LEFT)
         self.threads_var = tk.StringVar(value="3")
         threads_spinbox = ttk.Spinbox(
             threads_frame,
@@ -253,18 +265,24 @@ class WebsiteCopier:
         )
         threads_spinbox.pack(side=tk.LEFT)
 
+        # Initialize session with retry
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=0.1,
+            status_forcelist=[500, 502, 503, 504],
+        )
+
+        # Add new initial variables
+        self.files_dict = {}
+        self.download_path = ""  # Initialize as empty string
+        self.is_paused = False
+        self.download_queue = Queue()
+        self.max_workers = 3  # Maximum files to download at once
+        self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        self.active_downloads = []
+
         # Configure requests session
         self.session = requests.Session()
-        retry_strategy = Retry(
-            total=3,  # Total retry count
-            backoff_factor=1,  # Retry interval
-            status_forcelist=[
-                500,
-                502,
-                503,
-                504,
-            ],  # HTTP status codes that need to be retried
-        )
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
             pool_connections=10,  # Connection pool size
@@ -356,30 +374,64 @@ class WebsiteCopier:
             if not part:  # Skip empty parts
                 continue
 
-            current_path = posixpath.join(current_path, part) if current_path else part
+            current_path = posixpath.join(
+                current_path, part) if current_path else part
             print(f"\nProcessing folder: {part}")
             print(f"Current full path: {current_path}")
 
-            # Check if full path already exists
-            if current_path in self.folders:
-                print(f"Found existing folder: {current_path}")
-                parent = self.folders[current_path]["id"]
-                continue
+            # 使用线程锁保护对folders字典的访问
+            with self.folders_dict_lock:
+                # Check if full path already exists
+                if current_path in self.folders:
+                    print(f"Found existing folder: {current_path}")
+                    parent = self.folders[current_path]["id"]
+                    continue
 
-            print(f"Creating new folder: {current_path}")
-            folder_id = self.tree.insert(
-                parent,
-                "end",
-                text=f"{self.folder_icon} {part}",  # Remove unchecked box
-                values=("", "Directory"),
-                tags=("folder", "unchecked"),
-            )
-            self.folders[current_path] = {
-                "id": folder_id,
-                "url": urljoin(url, current_path),
-                "full_path": current_path,
-            }
-            parent = folder_id
+                print(f"Creating new folder: {current_path}")
+
+                # 检查是否已存在同名文件夹（通过检查父节点的所有子节点）
+                for child in self.tree.get_children(parent):
+                    child_text = self.tree.item(child)["text"]
+                    child_tags = self.tree.item(child)["tags"]
+                    if "folder" in child_tags:
+                        # 提取文件夹名称（移除图标）
+                        for i, text_part in enumerate(child_text.split()):
+                            if text_part == self.folder_icon:
+                                folder_name = " ".join(
+                                    child_text.split()[i + 1:])
+                                if folder_name == part:
+                                    print(
+                                        f"Found folder with same name: {part}")
+                                    parent = child
+                                    # 更新folders字典以便后续查找
+                                    self.folders[current_path] = {
+                                        "id": child,
+                                        "url": urljoin(url, current_path),
+                                        "full_path": current_path,
+                                    }
+                                    break
+                        if (
+                            current_path in self.folders
+                        ):  # 如果已找到同名文件夹，跳出循环
+                            break
+
+                # 如果已经找到同名文件夹，继续处理下一部分
+                if current_path in self.folders:
+                    continue
+
+                folder_id = self.tree.insert(
+                    parent,
+                    "end",
+                    text=f"{self.folder_icon} {part}",  # Remove unchecked box
+                    values=("", "Directory"),
+                    tags=("folder", "unchecked"),
+                )
+                self.folders[current_path] = {
+                    "id": folder_id,
+                    "url": urljoin(url, current_path),
+                    "full_path": current_path,
+                }
+                parent = folder_id
 
         print("\n=== Folder Structure Creation Completed ===")
         return parent
@@ -439,7 +491,7 @@ class WebsiteCopier:
         for i, part in enumerate(text_parts):
             if part in [self.folder_icon, self.file_icon]:
                 icon = part
-                name = " ".join(text_parts[i + 1 :])
+                name = " ".join(text_parts[i + 1:])
                 break
         else:
             print(f"Error: No valid icon found - {text}")
@@ -487,10 +539,29 @@ class WebsiteCopier:
             self.progress_label.config(text="Scanning website...")
             self.scan_btn.configure(state=tk.DISABLED)
 
-            # Clear existing records
-            self.folders.clear()
+            # 重置队列和处理状态
+            if hasattr(self, "dir_queue"):
+                while not self.dir_queue.empty():
+                    self.dir_queue.get()
+            if hasattr(self, "file_queue"):
+                while not self.file_queue.empty():
+                    self.file_queue.get()
+            self.is_processing_dirs = False
+            self.is_processing_files = False
+
+            # 使用线程锁清理现有记录
+            with self.files_dict_lock:
+                self.files_dict.clear()
+
+            # 使用线程锁清理文件夹记录
+            with self.folders_dict_lock:
+                self.folders.clear()
+
             self.tree.delete(*self.tree.get_children())
-            self.files_dict.clear()
+
+            # 重置文件类型追踪
+            if hasattr(self, "_type_files"):
+                self._type_files.clear()
 
             # Reset scan progress
             self.total_urls = 0
@@ -512,11 +583,13 @@ class WebsiteCopier:
 
                     if url_info["is_directory"]:
                         futures.append(
-                            executor.submit(self._process_directory, url_info["url"])
+                            executor.submit(
+                                self._process_directory, url_info["url"])
                         )
                     else:
                         futures.append(
-                            executor.submit(self._process_file, url_info["url"])
+                            executor.submit(self._process_file,
+                                            url_info["url"])
                         )
 
                 # Wait for all tasks to complete
@@ -547,7 +620,8 @@ class WebsiteCopier:
             if (
                 self.is_scanning and not self.should_stop
             ):  # Show error only when scan is not canceled
-                messagebox.showerror("Error", f"Unknown error occurred: {str(e)}")
+                messagebox.showerror(
+                    "Error", f"Unknown error occurred: {str(e)}")
         finally:
             self.is_scanning = False
             self.scan_btn.configure(state=tk.NORMAL, text="Scan")
@@ -594,10 +668,18 @@ class WebsiteCopier:
             scanned_urls = set()
             base_url = url
 
-        if url in scanned_urls:
+        # 标准化URL格式
+        parsed = urlparse(url)
+        url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        if url.endswith("/"):
+            normalized_url = url
+        else:
+            normalized_url = url + "/"
+
+        if normalized_url in scanned_urls:
             return []
 
-        scanned_urls.add(url)
+        scanned_urls.add(normalized_url)
         urls = []
 
         try:
@@ -625,32 +707,45 @@ class WebsiteCopier:
                     continue
 
                 parsed = urlparse(full_url)
-                normalized_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
-                # Standardize path
-                path = parsed.path.rstrip("/")
+                # 更细致的URL标准化
+                path = parsed.path
                 if not path:
-                    continue
+                    path = "/"
 
-                # If URL has been processed, skip
-                if normalized_url in unique_urls:
+                normalized_url = f"{parsed.scheme}://{parsed.netloc}{path}"
+
+                # 对目录URL标准化处理
+                if href.endswith("/"):
+                    if not normalized_url.endswith("/"):
+                        normalized_url += "/"
+                else:
+                    # 文件URL不应以/结尾
+                    if normalized_url.endswith("/") and "." in os.path.basename(
+                        normalized_url[:-1]
+                    ):
+                        normalized_url = normalized_url[:-1]
+
+                # 如果URL已经处理过，跳过
+                if normalized_url in unique_urls or normalized_url in scanned_urls:
                     continue
 
                 unique_urls.add(normalized_url)
 
-                is_directory = href.endswith("/")
+                is_directory = normalized_url.endswith("/")
                 url_info = {
                     "url": normalized_url,
                     "is_directory": is_directory,
-                    "path": path,
+                    "path": parsed.path,
                 }
 
                 urls.append(url_info)
 
-                # If it's a directory and not scanned, recursively process
+                # 如果是目录且未扫描过，递归处理
                 if is_directory and normalized_url not in scanned_urls:
                     urls.extend(
-                        self._get_all_urls(normalized_url, scanned_urls, base_url)
+                        self._get_all_urls(
+                            normalized_url, scanned_urls, base_url)
                     )
 
             return urls
@@ -674,9 +769,43 @@ class WebsiteCopier:
         try:
             parsed_path = urlparse(url).path
             dir_path = parsed_path.rstrip("/")
-            self.create_folder_structure(dir_path, url)
+
+            # 不立即创建目录，而是放到队列中稍后处理
+            # 这样不会阻塞扫描线程
+            with self.folders_dict_lock:
+                if not hasattr(self, "dir_queue"):
+                    self.dir_queue = Queue()
+                self.dir_queue.put((dir_path, url))
+
+            # 确保UI更新队列被处理
+            if not hasattr(self, "is_processing_dirs") or not self.is_processing_dirs:
+                self._process_dir_queue()
+
         except Exception as e:
             print(f"Error processing directory: {str(e)}")
+
+    def _process_dir_queue(self):
+        """处理目录创建队列，避免UI阻塞"""
+        try:
+            if not hasattr(self, "dir_queue"):
+                return
+
+            # 标记正在处理目录队列
+            self.is_processing_dirs = True
+
+            # 每次只处理一个目录，然后返回控制权给UI线程
+            if not self.dir_queue.empty():
+                dir_path, url = self.dir_queue.get()
+                self.create_folder_structure(dir_path, url)
+
+                # 安排下一次处理
+                self.window.after(10, self._process_dir_queue)
+            else:
+                self.is_processing_dirs = False
+
+        except Exception as e:
+            self.is_processing_dirs = False
+            print(f"Error processing directory queue: {str(e)}")
 
     def _process_file(self, url):
         """Process file"""
@@ -701,13 +830,19 @@ class WebsiteCopier:
 
             print(f"Full path: {full_path}")
 
-            # Check if file already exists
-            if full_path in self.files_dict:
-                print(f"File already exists: {full_path}")
-                return
+            # 使用线程锁保护对files_dict的访问
+            with self.files_dict_lock:
+                # 检查文件是否已存在
+                if full_path in self.files_dict:
+                    print(f"File already exists: {full_path}")
+                    return
+
+                # 标记文件为正在处理状态，防止其他线程重复处理
+                self.files_dict[full_path] = None
 
             try:
-                head = self.session.head(url, timeout=(5, 10), allow_redirects=True)
+                head = self.session.head(
+                    url, timeout=(5, 10), allow_redirects=True)
 
                 size = head.headers.get("content-length", "Unknown")
                 if size != "Unknown":
@@ -715,33 +850,120 @@ class WebsiteCopier:
 
                 file_type = head.headers.get("content-type", "Unknown")
 
-                # First update file type list
-                self.window.after(0, lambda: self.update_file_types(file_name))
+                # 将文件信息放入队列，避免直接调用UI更新
+                with self.files_dict_lock:
+                    if not hasattr(self, "file_queue"):
+                        self.file_queue = Queue()
+                    self.file_queue.put(
+                        (dir_path, url, file_name, size, file_type, full_path))
 
-                # Create folder structure and add file in main thread
-                self.window.after(
-                    0,
-                    lambda: self._safe_create_folder_and_add_file(
-                        dir_path, url, file_name, size, file_type, full_path
-                    ),
-                )
+                # 确保有一个处理文件队列的线程
+                if not hasattr(self, "is_processing_files") or not self.is_processing_files:
+                    self.window.after(0, self._process_file_queue)
 
             except (requests.RequestException, socket.timeout):
-                pass
+                # 如果请求失败，从files_dict中移除标记
+                with self.files_dict_lock:
+                    if (
+                        full_path in self.files_dict
+                        and self.files_dict[full_path] is None
+                    ):
+                        del self.files_dict[full_path]
 
         except Exception as e:
+            # 出现异常时，确保从files_dict移除标记
+            try:
+                with self.files_dict_lock:
+                    if (
+                        "full_path" in locals()
+                        and full_path in self.files_dict
+                        and self.files_dict[full_path] is None
+                    ):
+                        del self.files_dict[full_path]
+            except:
+                pass
             print(f"Error processing file: {str(e)}")
+
+    def _process_file_queue(self):
+        """处理文件队列，避免UI阻塞"""
+        try:
+            if not hasattr(self, "file_queue"):
+                return
+
+            # 标记正在处理文件队列
+            self.is_processing_files = True
+
+            # 每次只处理一个文件，然后返回控制权给UI线程
+            if not self.file_queue.empty():
+                dir_path, url, file_name, size, file_type, full_path = self.file_queue.get()
+
+                # 更新文件类型列表
+                self.update_file_types(file_name)
+
+                # 创建文件结构
+                self._safe_create_folder_and_add_file(
+                    dir_path, url, file_name, size, file_type, full_path
+                )
+
+                # 安排下一次处理
+                self.window.after(5, self._process_file_queue)
+            else:
+                self.is_processing_files = False
+
+        except Exception as e:
+            self.is_processing_files = False
+            print(f"Error processing file queue: {str(e)}")
 
     def _safe_create_folder_and_add_file(
         self, dir_path, url, file_name, size, file_type, full_path
     ):
         """Create folder structure and add file in main thread"""
         try:
+            # 再次检查文件是否已存在（可能在请求期间被其他线程添加）
+            with self.files_dict_lock:
+                if (
+                    full_path in self.files_dict
+                    and self.files_dict[full_path] is not None
+                ):
+                    print(f"File was added by another thread: {full_path}")
+                    return
+
             parent_id = self.create_folder_structure(dir_path, url)
+
+            # 检查该父文件夹下是否已存在同名文件
+            for child in self.tree.get_children(parent_id):
+                if "file" in self.tree.item(child)["tags"]:
+                    child_text = self.tree.item(child)["text"]
+                    # 提取文件名（移除图标）
+                    for i, part in enumerate(child_text.split()):
+                        if part == self.file_icon:
+                            child_name = " ".join(child_text.split()[i + 1:])
+                            if child_name == file_name:
+                                print(
+                                    f"File with the same name already exists in tree: {file_name}"
+                                )
+                                with self.files_dict_lock:
+                                    if (
+                                        full_path in self.files_dict
+                                        and self.files_dict[full_path] is None
+                                    ):
+                                        del self.files_dict[full_path]
+                                return
+
             self._add_file_to_tree(
                 parent_id, file_name, size, file_type, full_path, url
             )
         except Exception as e:
+            # 出现异常时清理临时状态
+            try:
+                with self.files_dict_lock:
+                    if (
+                        full_path in self.files_dict
+                        and self.files_dict[full_path] is None
+                    ):
+                        del self.files_dict[full_path]
+            except:
+                pass
             print(f"Error adding file to tree structure: {str(e)}")
 
     def _add_file_to_tree(self, parent_id, file_name, size, file_type, full_path, url):
@@ -759,7 +981,10 @@ class WebsiteCopier:
                 values=(size, file_type),
                 tags=("file", "unchecked") + tuple(row_tags),
             )
-            self.files_dict[full_path] = url
+
+            # 使用线程锁保护对files_dict的更新
+            with self.files_dict_lock:
+                self.files_dict[full_path] = url
 
             # Add file item to corresponding file type set
             ext = os.path.splitext(file_name)[1].lower()
@@ -838,16 +1063,19 @@ class WebsiteCopier:
             return False
 
     def update_progress(self, file_name, progress):
-        self.window.after(0, lambda: self._update_progress(file_name, progress))
+        self.window.after(
+            0, lambda: self._update_progress(file_name, progress))
 
     def _update_progress(self, file_name, progress):
         self.progress_var.set(progress)
-        self.progress_label.config(text=f"Downloading: {file_name} ({progress:.1f}%)")
+        self.progress_label.config(
+            text=f"Downloading: {file_name} ({progress:.1f}%)")
 
     def download_selected(self):
         """Download checked files"""
         if not self.checked_items:
-            messagebox.showwarning("Warning", "Please select files to download")
+            messagebox.showwarning(
+                "Warning", "Please select files to download")
             return
 
         # Filter out folders, only download files
@@ -858,7 +1086,8 @@ class WebsiteCopier:
         ]
 
         if not files_to_download:
-            messagebox.showwarning("Warning", "Please select files to download")
+            messagebox.showwarning(
+                "Warning", "Please select files to download")
             return
 
         # If no download path selected, use default
@@ -883,7 +1112,7 @@ class WebsiteCopier:
             text_parts = self.tree.item(item)["text"].split(" ")
             for i, part in enumerate(text_parts):
                 if part in [self.folder_icon, self.file_icon]:
-                    file_name = " ".join(text_parts[i + 1 :])
+                    file_name = " ".join(text_parts[i + 1:])
                     break
             else:
                 continue
@@ -897,7 +1126,8 @@ class WebsiteCopier:
                 for i, part in enumerate(parent_text.split(" ")):
                     if part in [self.folder_icon, self.file_icon]:
                         if current != item:  # Exclude file name
-                            folder_name = " ".join(parent_text.split(" ")[i + 1 :])
+                            folder_name = " ".join(
+                                parent_text.split(" ")[i + 1:])
                             path_parts.append(folder_name)
                         break
                 current = self.tree.parent(current)
@@ -912,7 +1142,8 @@ class WebsiteCopier:
                 os.makedirs(target_dir)
 
             # Get download URL
-            full_path = os.path.join(relative_path, file_name).replace("\\", "/")
+            full_path = os.path.join(
+                relative_path, file_name).replace("\\", "/")
             url = self.files_dict.get(full_path)
 
             if url:
@@ -945,7 +1176,8 @@ class WebsiteCopier:
     def _downloads_completed(self):
         self.progress_label.config(text="Download completed")
         self.pause_btn.configure(state=tk.DISABLED)
-        messagebox.showinfo("Completed", "Selected files downloaded successfully")
+        messagebox.showinfo(
+            "Completed", "Selected files downloaded successfully")
 
     def start_scan(self):
         url = self.url_entry.get()
@@ -956,7 +1188,8 @@ class WebsiteCopier:
         # Set download path to website name
         try:
             parsed_url = urlparse(url)
-            site_name = parsed_url.netloc.split(":")[0]  # Remove possible port number
+            site_name = parsed_url.netloc.split(
+                ":")[0]  # Remove possible port number
             self.download_path = os.path.join(os.getcwd(), site_name)
         except Exception as e:
             print(f"Error setting download path: {str(e)}")
@@ -1059,13 +1292,15 @@ class WebsiteCopier:
             folders = [
                 item for item in items if "folder" in self.tree.item(item)["tags"]
             ]
-            files = [item for item in items if "file" in self.tree.item(item)["tags"]]
+            files = [item for item in items if "file" in self.tree.item(item)[
+                "tags"]]
 
             # Sort folders and files
             sorted_folders = sorted(
                 folders, key=get_sort_key, reverse=self.sort_reverse
             )
-            sorted_files = sorted(files, key=get_sort_key, reverse=self.sort_reverse)
+            sorted_files = sorted(files, key=get_sort_key,
+                                  reverse=self.sort_reverse)
 
             # Re-arrange items
             for idx, item in enumerate(sorted_folders + sorted_files):
@@ -1080,6 +1315,23 @@ class WebsiteCopier:
         """Handle window close event"""
         self.should_stop = True
         self.is_scanning = False
+
+        # 停止所有队列处理
+        self.is_processing_dirs = False
+        self.is_processing_files = False
+
+        # 清空队列
+        while not self.dir_queue.empty():
+            try:
+                self.dir_queue.get_nowait()
+            except:
+                pass
+
+        while not self.file_queue.empty():
+            try:
+                self.file_queue.get_nowait()
+            except:
+                pass
 
         # Wait for all threads to complete
         if hasattr(self, "executor"):
@@ -1294,8 +1546,10 @@ class WebsiteCopier:
         )
 
         # Set up different area labels and styles
-        self.tree.tag_configure("arrow_zone", background="#f0f0f0")  # Arrow area
-        self.tree.tag_configure("checkbox_zone", background="#e8e8e8")  # Checkbox area
+        self.tree.tag_configure(
+            "arrow_zone", background="#f0f0f0")  # Arrow area
+        self.tree.tag_configure(
+            "checkbox_zone", background="#e8e8e8")  # Checkbox area
         self.tree.tag_configure("name_zone", background="#ffffff")  # Name area
 
         # Bind mouse move event to show area
