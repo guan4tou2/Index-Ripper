@@ -61,13 +61,13 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           # Add tkinter to hidden imports
-          pyinstaller --onefile --windowed --icon=app.ico --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+          pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
 
       - name: Build with PyInstaller (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
           # Create app bundle
-          pyinstaller -F --windowed --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.ico index_ripper.py
+          pyinstaller -F --windowed --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
           # Remove the extra binary file
           rm -f dist/IndexRipper
 
