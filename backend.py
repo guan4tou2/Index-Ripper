@@ -62,11 +62,18 @@ class Backend:
             self.ui_manager.total_urls = len(all_urls)
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                futures = []
+                # Use a queue to manage tasks to allow for pausing
+                task_queue = Queue()
                 for url_info in all_urls:
+                    task_queue.put(url_info)
+
+                futures = []
+                while not task_queue.empty():
                     if self.should_stop:
                         break
-                    self.ui_manager.scan_pause_event.wait()
+                    self.ui_manager.scan_pause_event.wait()  # Pause here
+
+                    url_info = task_queue.get()
                     if url_info["is_directory"]:
                         futures.append(
                             executor.submit(self._process_directory, url_info["url"])
@@ -77,11 +84,20 @@ class Backend:
                         )
 
                 for future in concurrent.futures.as_completed(futures):
+                    self.ui_manager.scan_pause_event.wait()  # Pause here as well
                     if self.should_stop:
+                        # Cancel remaining futures
+                        for f in futures:
+                            if not f.done():
+                                f.cancel()
                         break
                     try:
                         future.result()
-                    except (requests.RequestException, socket.timeout) as ex:
+                    except (
+                        requests.RequestException,
+                        socket.timeout,
+                        concurrent.futures.CancelledError,
+                    ) as ex:
                         print(f"Error processing URL: {str(ex)}")
                     finally:
                         if self.ui_manager.is_scanning:

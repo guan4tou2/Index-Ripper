@@ -93,6 +93,11 @@ class WebsiteCopier:
         )
         self.scan_pause_btn.pack(side="left", padx=5)
 
+        self.clear_scan_btn = ctk.CTkButton(
+            scan_buttons_frame, text="Clear", command=self.clear_scan_results
+        )
+        self.clear_scan_btn.pack(side="left", padx=5)
+
         # --- File type filter area ---
         filter_frame = ctk.CTkFrame(self.top_frame)
         filter_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
@@ -417,11 +422,20 @@ class WebsiteCopier:
         return ancestors
 
     def on_tree_click(self, event):
-        """Handle tree item click event"""
+        """Handle tree item click event."""
         item = self.tree.identify("item", event.x, event.y)
         if not item:
             return
 
+        # Identify the specific element clicked
+        element = self.tree.identify_element(event.x, event.y)
+
+        # If the click is on the expand/collapse indicator, let the default
+        # binding handle it and do nothing more.
+        if "indicator" in element:
+            return
+
+        # If the click is on the cell (text/icon), toggle the check state.
         column = self.tree.identify_column(event.x)
         if column == "#0":  # Only toggle check if name column is clicked
             self.toggle_check(item)
@@ -569,7 +583,7 @@ class WebsiteCopier:
         ext = f".{ext}"
 
         if ext not in self.file_types:
-            self.file_types[ext] = ctk.BooleanVar(value=True)
+            self.file_types[ext] = ctk.BooleanVar(value=False)
             self.file_type_counts[ext] = 0
             # Re-draw checkboxes
             self.redraw_file_type_filters()
@@ -598,10 +612,34 @@ class WebsiteCopier:
             chk.grid(row=i // 4, column=i % 4, padx=5, pady=2, sticky="w")
 
     def apply_filters(self):
-        """Applies the selected file type filters to the treeview."""
-        # This method is a placeholder for now as direct visibility control is complex.
-        # A full refresh of the tree would be one way to implement this.
-        print("Filter applied (visual update needs a refresh implementation)")
+        """Applies selected file type filters by checking/unchecking items in the tree."""
+        all_items = self.get_all_tree_items()
+        items_to_expand = set()
+
+        for item in all_items:
+            tags = self.tree.item(item, "tags")
+            if "file" in tags:
+                text = self.tree.item(item, "text")
+                file_name = text.replace(f"{self.file_icon} ", "")
+
+                ext = os.path.splitext(file_name)[1].lower()
+                if not ext:
+                    ext = "(No Extension)"
+                elif not ext.startswith("."):
+                    ext = f".{ext}"
+
+                if ext in self.file_types:
+                    should_be_checked = self.file_types[ext].get()
+                    self.toggle_check(item, force_check=should_be_checked)
+                    if should_be_checked:
+                        # If a file is checked, we need to expand its ancestors
+                        parent = self.tree.parent(item)
+                        while parent:
+                            items_to_expand.add(parent)
+                            parent = self.tree.parent(parent)
+
+        for item_id in items_to_expand:
+            self.tree.item(item_id, open=True)
 
     def get_all_tree_items(self, parent=""):
         """Recursively gets all item IDs from the treeview."""
@@ -622,6 +660,38 @@ class WebsiteCopier:
         for var in self.file_types.values():
             var.set(False)
         self.apply_filters()
+
+    def clear_scan_results(self):
+        """Clears the treeview and all scan-related data."""
+        if self.is_scanning:
+            messagebox.showwarning(
+                "Warning", "Cannot clear results while a scan is in progress."
+            )
+            return
+
+        # Clear Treeview
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        # Clear data structures
+        with self.files_dict_lock:
+            self.files_dict.clear()
+        with self.folders_dict_lock:
+            self.folders.clear()
+
+        self.checked_items.clear()
+        self.file_types.clear()
+        self.file_type_counts.clear()
+
+        # Clear file type filter UI
+        for widget in self.filter_checkboxes_frame.winfo_children():
+            widget.destroy()
+
+        # Reset scan progress
+        self.total_urls = 0
+        self.scanned_urls = 0
+        self.progress_bar.set(0)
+        self.progress_label.configure(text="Scan results cleared.")
 
     def update_thread_count(self, new_count_str: str):
         """Updates the number of concurrent download threads."""
