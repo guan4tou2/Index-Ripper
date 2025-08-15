@@ -123,18 +123,18 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          for dir in artifacts/IndexRipper-macOS-*/IndexRipper.app; do
-            base_dir=$(dirname "$dir")
-            base_name=$(basename "$base_dir")
-            zip_name="${base_name}.zip"
-            echo "Zipping $dir to $zip_name"
-            (cd "$base_dir/.." && zip -r -9 "$zip_name" "$base_name/IndexRipper.app")
+          for app in artifacts/IndexRipper-macOS-*/IndexRipper.app; do
+            base_dir=$(dirname "$app")
+            artifact_dir=$(basename "$base_dir")
+            zip_name="artifacts/${artifact_dir}.zip"
+            echo "Zipping $app to $zip_name"
+            (cd "$base_dir/.." && zip -r -9 "../../$zip_name" "$artifact_dir/IndexRipper.app")
           done
 
       - name: List prepared files
         run: |
           echo "Artifacts tree:" && ls -laR artifacts || true
-          echo "Zips:" && ls -la *.zip || true
+          echo "Zips in artifacts:" && ls -la artifacts/*.zip || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -142,7 +142,7 @@ jobs:
           files: |
             artifacts/IndexRipper-Windows/IndexRipper.exe
             artifacts/IndexRipper-Linux/IndexRipper
-            *.zip
+            artifacts/*.zip
           draft: false
           prerelease: false
         env:
