@@ -123,12 +123,12 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          for app in artifacts/IndexRipper-macOS-*/IndexRipper.app; do
-            base_dir=$(dirname "$app")
+          for dir in artifacts/IndexRipper-macOS-*/IndexRipper.app; do
+            base_dir=$(dirname "$dir")
             base_name=$(basename "$base_dir")
             zip_name="${base_name}.zip"
-            echo "Zipping $app to $zip_name"
-            (cd "$base_dir/.." && ditto -c -k --sequesterRsrc --keepParent "$base_name/IndexRipper.app" "$zip_name")
+            echo "Zipping $dir to $zip_name"
+            (cd "$base_dir/.." && zip -r -9 "$zip_name" "$base_name/IndexRipper.app")
           done
 
       - name: List prepared files
@@ -140,8 +140,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/**/IndexRipper.exe
-            artifacts/**/IndexRipper
+            artifacts/IndexRipper-Windows/IndexRipper.exe
+            artifacts/IndexRipper-Linux/IndexRipper
             *.zip
           draft: false
           prerelease: false
