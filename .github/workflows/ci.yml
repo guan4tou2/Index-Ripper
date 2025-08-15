@@ -131,10 +131,29 @@ jobs:
           (
             cd artifacts
             for dir in IndexRipper-macOS-*; do
+              [ -d "$dir" ] || continue
+              zip_name="${dir}.app.zip"
+              app_src=""
               if [ -d "$dir/IndexRipper.app" ]; then
-                zip_name="${dir}.app.zip"
-                echo "Zipping $dir/IndexRipper.app -> $zip_name"
-                zip -r -9 "$zip_name" "$dir/IndexRipper.app"
+                # 常見情況：artifact 內已有 .app 目錄
+                app_src="$dir/IndexRipper.app"
+              elif [ -d "$dir/dist/IndexRipper.app" ]; then
+                # 另一種情況：保留了 dist 前綴
+                app_src="$dir/dist/IndexRipper.app"
+              elif [ -d "$dir/Contents" ]; then
+                # 展平情況：artifact 只包含 .app 內容，重建包裹
+                mkdir -p "$dir/_pkg/IndexRipper.app"
+                shopt -s dotglob
+                mv "$dir"/* "$dir/_pkg/IndexRipper.app"/
+                shopt -u dotglob
+                app_src="$dir/_pkg/IndexRipper.app"
+              fi
+
+              if [ -n "$app_src" ] && [ -d "$app_src" ]; then
+                echo "Zipping $app_src -> $zip_name"
+                zip -r -9 "$zip_name" "$app_src"
+              else
+                echo "No macOS app bundle found in $dir, skipping"
               fi
             done
           )
