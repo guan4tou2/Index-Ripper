@@ -134,6 +134,35 @@ Notes:
 - Linux: Mark the file executable if needed: `chmod +x ./IndexRipper`.
 - Using prebuilt binaries does not require a Python installation.
 
+### macOS: Open and Permissions Guide
+
+If you see "can't be opened" or "cannot be verified":
+
+1) Try Finder (recommended first):
+
+- Right-click `IndexRipper.app` → Open → Click Open in the dialog.
+- Or go to System Settings → Privacy & Security → General → Click "Open Anyway" if shown.
+
+1) Remove quarantine attribute (Gatekeeper flag) from Terminal:
+
+```bash
+xattr -dr com.apple.quarantine "/path/to/IndexRipper.app"
+```
+
+1) Grant executable permission (inside the .app Contents/MacOS):
+
+```bash
+chmod +x "/path/to/IndexRipper.app/Contents/MacOS/IndexRipper"
+```
+
+1) Launch from Terminal (to observe logs for troubleshooting):
+
+```bash
+"/path/to/IndexRipper.app/Contents/MacOS/IndexRipper"
+```
+
+Tip: Replace `/path/to` with your actual download location (e.g., `~/Downloads`).
+
 ## Build Locally (Packaging)
 
 Build platform-specific executables with uv + PyInstaller.

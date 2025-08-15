@@ -134,6 +134,35 @@ uv run python index_ripper.py
 - Linux：如需，請先賦予執行權限：`chmod +x ./IndexRipper`。
 - 使用預編譯檔不需要安裝 Python。
 
+### macOS 開啟與權限教學
+
+若出現「無法打開應用程式」或「無法驗證開發者」：
+
+1) 使用 Finder 的方式（建議先試）
+
+- 右鍵點選 `IndexRipper.app` → 選擇「打開」→ 在出現的對話框中再按一次「打開」。
+- 若在「系統設定 → 隱私權與安全性 → 一般」看到「仍要打開」，請點選它。
+
+1) 從終端機移除隔離屬性（Gatekeeper 標記）
+
+```bash
+xattr -dr com.apple.quarantine "/path/to/IndexRipper.app"
+```
+
+1) 賦予執行權限（進入 .app 內部的 Contents/MacOS）
+
+```bash
+chmod +x "/path/to/IndexRipper.app/Contents/MacOS/IndexRipper"
+```
+
+1) 直接從終端機啟動（可觀察輸出訊息，有助除錯）
+
+```bash
+"/path/to/IndexRipper.app/Contents/MacOS/IndexRipper"
+```
+
+提示：請將上述的 `/path/to` 替換為實際下載位置（例如 `~/Downloads`）。
+
 ## 本地打包（Packaging）
 
 使用 uv + PyInstaller 打包成各平台可執行檔。
