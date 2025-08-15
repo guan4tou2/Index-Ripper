@@ -147,20 +147,24 @@ jobs:
             mv artifacts/IndexRipper-Windows/IndexRipper.exe artifacts/IndexRipper-Windows.exe
           fi
           if [ -f artifacts/IndexRipper-Linux/IndexRipper ]; then
-            mv artifacts/IndexRipper-Linux/IndexRipper artifacts/IndexRipper-Linux
+            # 目的地若與資料夾同名會造成 mv 視為移動到同一資料夾，導致「same file」錯誤
+            # 因此改以 .bin 作為檔名，避免與資料夾名稱衝突
+            mv artifacts/IndexRipper-Linux/IndexRipper artifacts/IndexRipper-Linux.bin
           fi
 
       - name: List prepared files
         run: |
           echo "Artifacts tree:" && ls -laR artifacts || true
           echo "macOS zips:" && ls -la artifacts/*.app.zip || true
+          echo "Windows exe:" && ls -la artifacts/*.exe || true
+          echo "Linux bin:" && ls -la artifacts/*.bin || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             artifacts/IndexRipper-Windows.exe
-            artifacts/IndexRipper-Linux
+            artifacts/IndexRipper-Linux.bin
             artifacts/IndexRipper-macOS-*.app.zip
           draft: false
           prerelease: false
