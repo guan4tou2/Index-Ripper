@@ -156,8 +156,13 @@ jobs:
               fi
 
               if [ -n "$app_src" ] && [ -d "$app_src" ]; then
-                echo "Zipping $app_src -> $zip_name"
-                zip -r -9 "$zip_name" "$app_src"
+                zip_out_path="$(pwd)/$zip_name"
+                app_parent="$(dirname "$app_src")"
+                (
+                  cd "$app_parent"
+                  echo "Zipping IndexRipper.app from $(pwd) -> $zip_out_path"
+                  zip -r -9 "$zip_out_path" "IndexRipper.app"
+                )
               else
                 echo "No macOS app bundle found in $dir, skipping"
               fi
