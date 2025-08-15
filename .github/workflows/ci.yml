@@ -81,6 +81,9 @@ jobs:
           pyinstaller -F --windowed --name=IndexRipper \
             --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
           [ -f dist/IndexRipper ] && rm -f dist/IndexRipper || true
+          # 確保執行權限與進行 ad-hoc 簽章（不需證書）
+          chmod +x "dist/IndexRipper.app/Contents/MacOS/IndexRipper" || true
+          codesign --force --deep --sign - "dist/IndexRipper.app" || true
 
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-latest'
