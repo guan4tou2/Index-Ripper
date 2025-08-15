@@ -84,12 +84,13 @@ class Backend:
                         )
 
                 for future in concurrent.futures.as_completed(futures):
-                    self.ui_manager.scan_pause_event.wait()  # Pause here as well
+                    # Respect pause while consuming completed futures, to freeze progress bar
+                    self.ui_manager.scan_pause_event.wait()
                     if self.should_stop:
                         # Cancel remaining futures
-                        for f in futures:
-                            if not f.done():
-                                f.cancel()
+                        for future_item in futures:
+                            if not future_item.done():
+                                future_item.cancel()
                         break
                     try:
                         future.result()
@@ -98,7 +99,11 @@ class Backend:
                         socket.timeout,
                         concurrent.futures.CancelledError,
                     ) as ex:
-                        print(f"Error processing URL: {str(ex)}")
+                        # Log errors to UI log panel as well
+                        try:
+                            self.ui_manager.log_message(f"[Scan] Error: {str(ex)}")
+                        except AttributeError:
+                            pass
                     finally:
                         if self.ui_manager.is_scanning:
                             self.ui_manager.scanned_urls += 1
@@ -128,8 +133,17 @@ class Backend:
             self.ui_manager.scan_btn.configure(state="normal", text="Scan")
             self.ui_manager.scan_pause_btn.configure(state="disabled")
             self.ui_manager.scan_pause_event.set()
-            self.ui_manager.progress_label.configure(text="")
-            self.ui_manager.progress_bar.set(0)
+            try:
+                if not self.should_stop:
+                    self.ui_manager.progress_label.configure(text="Scan finished.")
+                    self.ui_manager.log_message("[Scan] Finished.")
+                else:
+                    self.ui_manager.progress_label.configure(text="Scan stopped.")
+                    self.ui_manager.log_message("[Scan] Stopped by user.")
+                # Notify UI to enable search and snapshot tree for filtering
+                self.ui_manager.scan_completed()
+            except AttributeError:
+                pass
 
     def _get_all_urls(self, url, scanned_urls=None, base_url=None):
         """Get all URLs that need to be processed"""
@@ -270,7 +284,7 @@ class Backend:
         except (OSError, ValueError) as ex:
             print(f"Error processing file URL {url}: {str(ex)}")
 
-    def download_file(self, url, file_path, file_name):
+    def download_file(self, url, file_path, file_name, cancel_event=None):
         """Downloads a single file."""
         try:
             response = self.ui_manager.session.get(
@@ -288,6 +302,15 @@ class Backend:
             with open(file_path, "wb") as file_handle:
                 for data in response.iter_content(block_size):
                     self.ui_manager.pause_event.wait()
+                    if cancel_event is not None and cancel_event.is_set():
+                        self.ui_manager.log_message(f"[Download] Canceled: {file_name}")
+                        try:
+                            self.ui_manager.update_download_status(
+                                file_path, "Canceled"
+                            )
+                        except AttributeError:
+                            pass
+                        return False
                     if self.should_stop:
                         print(f"Stopping download for {file_name}")
                         return False
@@ -298,16 +321,32 @@ class Backend:
 
                     if total_size > 0:
                         progress = (downloaded / total_size) * 100
-                        self.ui_manager.update_progress(file_name, progress)
+                        self.ui_manager.update_progress(file_path, file_name, progress)
 
-            self.ui_manager.update_progress(file_name, 100)
+            self.ui_manager.update_progress(file_path, file_name, 100)
+            try:
+                self.ui_manager.update_download_status(file_path, "Completed")
+            except AttributeError:
+                pass
             return True
 
         except requests.exceptions.RequestException as ex:
             print(f"Error downloading {file_name}: {str(ex)}")
+            try:
+                self.ui_manager.update_download_status(file_path, "Failed")
+                self.ui_manager.log_message(f"[Download] Error: {file_name} - {ex}")
+            except AttributeError:
+                pass
             return False
         except IOError as ex:
             print(f"File error for {file_name}: {str(ex)}")
+            try:
+                self.ui_manager.update_download_status(file_path, "Failed")
+                self.ui_manager.log_message(
+                    f"[Download] File error: {file_name} - {ex}"
+                )
+            except AttributeError:
+                pass
             return False
 
     def monitor_downloads(self, futures):

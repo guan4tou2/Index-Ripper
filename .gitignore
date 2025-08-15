@@ -1,3 +1,14 @@
 create_icon.py
 .DS_Store
 IndexRipper.spec
+
+# Build artifacts
+dist/
+build/
+__pycache__/
+*.spec
+*.log
+.venv/
+.env/
+.pytest_cache/
+*.egg-info/

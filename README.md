@@ -1,5 +1,7 @@
 # IndexRipper
 
+[![CI](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml/badge.svg)](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml)
+
 [中文說明](README_zh.md)
 
 A graphical tool specifically designed for downloading files from "Index of" pages, making it easy to scan and download all files from directory listings.
@@ -18,18 +20,21 @@ A graphical tool specifically designed for downloading files from "Index of" pag
 ## Main Functions
 
 ### Scanning Features
+
 - Automatic website directory structure scanning
 - Display file sizes and types
 - Support scan pause/resume
 - Real-time scanning progress display
 
 ### File Type Management
+
 - Automatic identification of all file types
 - File type statistics and filtering
 - One-click select/deselect specific types
 - File type association selection
 
 ### Download Management
+
 - Multi-threaded parallel downloads
 - Adjustable concurrent download count
 - Support pause/resume downloads
@@ -37,6 +42,7 @@ A graphical tool specifically designed for downloading files from "Index of" pag
 - Display download progress and speed
 
 ### Additional Features
+
 - File sorting (by name/size/type)
 - Directory expand/collapse
 - Select all/deselect all
@@ -63,19 +69,22 @@ A graphical tool specifically designed for downloading files from "Index of" pag
 ## System Requirements
 
 - Python 3.10 or higher
-- Supports Windows, macOS systems
+- Supports Windows, macOS, Linux
 
 ### Windows Users
+
 - When installing Python, check "tcl/tk and IDLE"
 - If not checked, re-run installer and modify
 
 ### macOS Users
+
 ```bash
 # Install Python and Tkinter using Homebrew
 brew install python-tk@3.10
 ```
 
 ### Linux Users
+
 ```bash
 # Ubuntu/Debian
 sudo apt-get install python3-tk
@@ -89,15 +98,64 @@ sudo pacman -S tk
 
 ## Installing Dependencies
 
+Prefer uv for faster, reproducible installs:
+
 ```bash
+# Install uv (one-time)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Install required packages
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 ## Running the Application
 
 ```bash
-python website_copier.py
+# Run with uv
+uv run python index_ripper.py
+```
+
+## Download Prebuilt Binaries
+
+You can download prebuilt executables from GitHub Actions artifacts:
+
+- Windows: IndexRipper.exe
+- macOS (Intel and Apple Silicon): IndexRipper.app
+- Linux (x86_64): IndexRipper
+
+Find them under Actions → "Build Executables (uv + PyInstaller)" → the latest successful run → Artifacts.
+
+- Direct link to workflow runs: [CI Workflow](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml)
+- Latest successful runs: [Actions](https://github.com/guan4tou2/Index-Ripper/actions)
+
+Notes:
+
+- macOS: The app is not signed/notarized. You may need to right-click → Open the first time, or run `xattr -dr com.apple.quarantine IndexRipper.app`.
+- Linux: Mark the file executable if needed: `chmod +x ./IndexRipper`.
+- Using prebuilt binaries does not require a Python installation.
+
+## Build Locally (Packaging)
+
+Build platform-specific executables with uv + PyInstaller.
+
+Windows (PowerShell):
+
+```powershell
+uv pip install -r requirements.txt pyinstaller pillow
+uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper `
+  --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+```
+
+macOS/Linux (bash):
+
+```bash
+uv pip install -r requirements.txt pyinstaller pillow
+# macOS .app
+uv run pyinstaller -F --windowed --name=IndexRipper \
+  --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
+# Linux single binary
+uv run pyinstaller --onefile --windowed --name=IndexRipper \
+  --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
 ```
 
 ## Important Notes
@@ -114,13 +172,14 @@ MIT License
 ## FAQ
 
 ### 1. tkinter Related Errors
+
 If you encounter "No module named '_tkinter'" error:
+
 - Windows: Reinstall Python, ensure "tcl/tk and IDLE" is checked
 - macOS: Run `brew install python-tk@3.10`
 - Linux: Install tkinter package for your distribution
 
 ### 2. Display Issues
+
 - If interface displays abnormally, it might be a DPI scaling issue
 - Windows users can right-click Python.exe → Properties → Compatibility → Change high DPI settings, and enable high DPI scaling override
-
-

@@ -1,0 +1,150 @@
+name: Build Executables (uv + PyInstaller)
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-13, macos-14, ubuntu-latest]
+        include:
+          - os: windows-latest
+            artifact_name: IndexRipper-Windows
+            output_path: dist/IndexRipper.exe
+          - os: macos-13
+            artifact_name: IndexRipper-macOS-Intel
+            output_path: dist/IndexRipper.app
+          - os: macos-14
+            artifact_name: IndexRipper-macOS-AppleSilicon
+            output_path: dist/IndexRipper.app
+          - os: ubuntu-latest
+            artifact_name: IndexRipper-Linux
+            output_path: dist/IndexRipper
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Setup conda (macOS & Linux)
+        if: matrix.os != 'windows-latest'
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          python-version: "3.12"
+          channels: conda-forge
+
+      - name: Install tk (macOS & Linux)
+        if: matrix.os != 'windows-latest'
+        shell: bash -l {0}
+        run: |
+          conda install -y tk
+
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          uv pip install -r requirements.txt pyinstaller pillow
+
+      - name: Install dependencies (macOS & Linux)
+        if: matrix.os != 'windows-latest'
+        shell: bash -l {0}
+        run: |
+          uv pip install -r requirements.txt pyinstaller pillow
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper ^
+            --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+
+      - name: Build (macOS)
+        if: startsWith(matrix.os, 'macos-')
+        shell: bash -l {0}
+        run: |
+          uv run pyinstaller -F --windowed --name=IndexRipper \
+            --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
+          [ -f dist/IndexRipper ] && rm -f dist/IndexRipper || true
+
+      - name: Build (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash -l {0}
+        run: |
+          uv run pyinstaller --onefile --windowed --name=IndexRipper \
+            --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
+
+      - name: Verify artifact exists
+        shell: bash
+        run: |
+          echo "Listing dist/:" && ls -la dist || true
+          if [ -d "${{ matrix.output_path }}" ] || [ -f "${{ matrix.output_path }}" ]; then
+            echo "Artifact exists: ${{ matrix.output_path }}"
+          else
+            echo "Artifact not found: ${{ matrix.output_path }}" && exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.output_path }}
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: Zip macOS apps
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for app in artifacts/IndexRipper-macOS-*/IndexRipper.app; do
+            base_dir=$(dirname "$app")
+            base_name=$(basename "$base_dir")
+            zip_name="${base_name}.zip"
+            echo "Zipping $app to $zip_name"
+            (cd "$base_dir/.." && ditto -c -k --sequesterRsrc --keepParent "$base_name/IndexRipper.app" "$zip_name")
+          done
+
+      - name: List prepared files
+        run: |
+          echo "Artifacts tree:" && ls -laR artifacts || true
+          echo "Zips:" && ls -la *.zip || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/**/IndexRipper.exe
+            artifacts/**/IndexRipper
+            *.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

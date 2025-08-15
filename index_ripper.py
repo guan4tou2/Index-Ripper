@@ -1,3 +1,7 @@
+"""Index Ripper UI using customtkinter with search, logs, and per-file downloads."""
+
+# pylint: disable=too-many-lines
+import json
 import os
 import posixpath
 import threading
@@ -33,6 +37,7 @@ class WebsiteCopier:
         self.window = ctk.CTk()
         self.window.title("Index Ripper")
         self.window.geometry("1200x900")
+        self.window.minsize(900, 650)
 
         self.backend = Backend(self)
 
@@ -130,8 +135,22 @@ class WebsiteCopier:
         # --- File list area ---
         self.tree_frame = ctk.CTkFrame(self.window)
         self.tree_frame.grid(row=1, column=0, padx=10, pady=5, sticky="nsew")
-        self.tree_frame.grid_rowconfigure(0, weight=1)
+        self.tree_frame.grid_rowconfigure(1, weight=1)
         self.tree_frame.grid_columnconfigure(0, weight=1)
+
+        # Search bar
+        search_frame = ctk.CTkFrame(self.tree_frame)
+        search_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        search_frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(search_frame, text="Search:").grid(row=0, column=0, padx=(5, 2))
+        self.search_var = ctk.StringVar()
+        self.search_var.trace_add("write", self.on_search_filter_changed)
+        self.search_entry = ctk.CTkEntry(
+            search_frame, textvariable=self.search_var, state="disabled"
+        )
+        self.search_entry.grid(row=0, column=1, sticky="ew")
+        self.full_tree_backup = {}
 
         # --- Treeview Styling ---
         style = ttk.Style()
@@ -152,7 +171,7 @@ class WebsiteCopier:
             foreground=text_color,
             fieldbackground=bg_color,
             borderwidth=0,
-            rowheight=25,
+            rowheight=22,
         )
         style.map("Treeview", background=[("selected", selected_color)])
         style.configure(
@@ -221,8 +240,8 @@ class WebsiteCopier:
         self.scrollbar = ctk.CTkScrollbar(self.tree_frame, command=self.tree.yview)
         self.tree.configure(yscrollcommand=self.scrollbar.set)
 
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        self.scrollbar.grid(row=0, column=1, sticky="ns")
+        self.tree.grid(row=1, column=0, sticky="nsew")
+        self.scrollbar.grid(row=1, column=1, sticky="ns")
 
         self.tree.bind("<Button-1>", self.on_tree_click)
 
@@ -265,6 +284,16 @@ class WebsiteCopier:
         )
         threads_option_menu.pack(side="left", padx=5)
 
+        # Toggle button to show/hide bottom panels (Downloads/Logs)
+        self.panels_visible = False
+        self.toggle_panels_btn = ctk.CTkButton(
+            control_frame,
+            text="Show Panels",
+            width=110,
+            command=self.toggle_panels,
+        )
+        self.toggle_panels_btn.pack(side="right", padx=5)
+
         # --- Progress bar ---
         self.progress_frame = ctk.CTkFrame(self.window)
         self.progress_frame.grid(row=3, column=0, padx=10, pady=(5, 10), sticky="ew")
@@ -279,6 +308,59 @@ class WebsiteCopier:
 
         self.progress_label = ctk.CTkLabel(self.progress_frame, text="")
         self.progress_label.grid(row=1, column=0, padx=5, pady=2, sticky="w")
+
+        # --- Panels (Downloads + Logs) inside a Tabview ---
+        self.panels_tabview = ctk.CTkTabview(self.window)
+        self.panels_tabview.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="ew")
+
+        self.panels_tabview.add("Downloads")
+        self.panels_tabview.add("Logs")
+
+        downloads_tab = self.panels_tabview.tab("Downloads")
+        self.downloads_frame = ctk.CTkScrollableFrame(downloads_tab, label_text="")
+        self.downloads_frame.pack(fill="x", expand=False)
+
+        logs_tab = self.panels_tabview.tab("Logs")
+        self.log_text = ctk.CTkTextbox(logs_tab, height=80)
+        self.log_text.pack(fill="x", expand=False)
+        self.log_text.configure(state="disabled")
+
+        # Hide panels by default, can be restored from settings later
+        self.panels_tabview.grid_remove()
+
+        # Track per-file download UI elements and cancel events
+        self.download_items = {}
+
+        # Load and apply saved settings (panels visibility and active tab)
+        self._settings_path = os.path.join(
+            os.path.expanduser("~"),
+            ".index_ripper_settings.json",
+        )
+        saved: dict = {}
+        if os.path.exists(self._settings_path):
+            try:
+                with open(self._settings_path, "r", encoding="utf-8") as file_obj:
+                    content = file_obj.read().strip()
+                    saved = json.loads(content) if content else {}
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                saved = {}
+        # Active tab
+        active = saved.get("active_tab")
+        if active in ("Downloads", "Logs"):
+            try:
+                self.panels_tabview.set(active)
+            except tk.TclError:
+                pass
+        # Visibility
+        visible = bool(saved.get("panels_visible", False))
+        if visible:
+            self.panels_tabview.grid()
+            self.panels_visible = True
+            self.toggle_panels_btn.configure(text="Hide Panels")
+        else:
+            self.panels_tabview.grid_remove()
+            self.panels_visible = False
+            self.toggle_panels_btn.configure(text="Show Panels")
 
         # Initialize session with retry
         retry_strategy = Retry(
@@ -310,6 +392,35 @@ class WebsiteCopier:
         self.scanned_urls = 0
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.should_stop = False
+
+    def toggle_panels(self):
+        """Show or hide the bottom panels (Downloads/Logs)."""
+        if self.panels_visible:
+            try:
+                self.panels_tabview.grid_remove()
+            except tk.TclError:
+                pass
+            self.panels_visible = False
+            self.toggle_panels_btn.configure(text="Show Panels")
+        else:
+            try:
+                self.panels_tabview.grid()
+            except tk.TclError:
+                pass
+            self.panels_visible = True
+            self.toggle_panels_btn.configure(text="Hide Panels")
+        # Save setting
+        # Persist setting (best-effort)
+        data = {
+            "panels_visible": bool(self.panels_visible),
+            "active_tab": str(self.panels_tabview.get()),
+        }
+        try:
+            with open(self._settings_path, "w", encoding="utf-8") as file_obj:
+                json.dump(data, file_obj, ensure_ascii=False, indent=2)
+        except OSError:
+            # Ignore persistence errors
+            pass
 
     def choose_download_path(self):
         """Opens a dialog to choose a download directory."""
@@ -591,7 +702,8 @@ class WebsiteCopier:
         # Update count on the checkbox
         for child in self.filter_checkboxes_frame.winfo_children():
             if child.cget("text").startswith(ext):
-                child.configure(text=f"{ext} ({self.file_type_counts[ext]})")
+                # Use dict expansion to avoid type-checker complaints about unknown kwargs
+                child.configure(**{"text": f"{ext} ({self.file_type_counts[ext]})"})
                 break
 
     def redraw_file_type_filters(self):
@@ -692,6 +804,48 @@ class WebsiteCopier:
         self.scanned_urls = 0
         self.progress_bar.set(0)
         self.progress_label.configure(text="Scan results cleared.")
+        self.search_var.set("")
+        self.search_entry.configure(state="disabled")
+        self.full_tree_backup.clear()
+
+    def on_search_filter_changed(self, *_):
+        """Callback when the search entry text changes."""
+        self.apply_search_filter()
+
+    def apply_search_filter(self):
+        """Filters the treeview based on the search query."""
+        query = self.search_var.get().lower()
+
+        # Detach all items first
+        for item_id in self.full_tree_backup:
+            if self.tree.exists(item_id):
+                self.tree.detach(item_id)
+
+        if not query:
+            # If query is empty, reattach all items in their original order
+            for item_id, data in self.full_tree_backup.items():
+                if self.tree.exists(item_id):
+                    self.tree.move(item_id, data["parent"], data["index"])
+            return
+
+        items_to_show = set()
+        # Find items that match the query
+        for item_id, data in self.full_tree_backup.items():
+            if query in data["text"].lower():
+                items_to_show.add(item_id)
+                # Add all parents to ensure the path is visible
+                parent = data["parent"]
+                while parent:
+                    items_to_show.add(parent)
+                    parent = self.full_tree_backup[parent]["parent"]
+
+        # Re-attach only the items that should be visible
+        for item_id, data in self.full_tree_backup.items():
+            if item_id in items_to_show:
+                if self.tree.exists(item_id):
+                    self.tree.move(item_id, data["parent"], data["index"])
+                    if "folder" in data["tags"]:
+                        self.tree.item(item_id, open=True)
 
     def update_thread_count(self, new_count_str: str):
         """Updates the number of concurrent download threads."""
@@ -706,16 +860,81 @@ class WebsiteCopier:
         except (ValueError, TypeError):
             pass
 
-    def update_progress(self, file_name, progress):
-        """Updates the progress bar and label from the main thread."""
-        self.window.after(0, lambda: self._update_progress_ui(file_name, progress))
-
-    def _update_progress_ui(self, file_name, progress):
-        """The actual UI update for the progress bar."""
-        self.progress_bar.set(progress / 100)
-        self.progress_label.configure(
-            text=f"Downloading: {file_name} ({progress:.1f}%)"
+    def update_progress(self, file_path, file_name, progress):
+        """Updates per-file or global progress from the main thread."""
+        self.window.after(
+            0, lambda: self._update_progress_ui(file_path, file_name, progress)
         )
+
+    def _update_progress_ui(self, file_path, file_name, progress):
+        """Update per-file progress if present; fallback to global bar."""
+        item = self.download_items.get(file_path)
+        if item:
+            try:
+                item["bar"].set(progress / 100)
+                item["status"].configure(text=f"Downloading {progress:.1f}%")
+            except tk.TclError:
+                pass
+        else:
+            self.progress_bar.set(progress / 100)
+            self.progress_label.configure(
+                text=f"Downloading: {file_name} ({progress:.1f}%)"
+            )
+
+    def update_download_status(self, file_path, status_text):
+        """Update status label for a specific download item."""
+        item = self.download_items.get(file_path)
+        if item:
+            try:
+                item["status"].configure(text=status_text)
+            except tk.TclError:
+                pass
+
+    def log_message(self, message: str):
+        """Append a message to the log panel."""
+        try:
+            self.log_text.configure(state="normal")
+            self.log_text.insert("end", message + "\n")
+            self.log_text.see("end")
+            self.log_text.configure(state="disabled")
+        except tk.TclError:
+            pass
+
+    def _ensure_download_item(self, file_path, file_name):
+        """Create UI row for a download if not exists, and return cancel event."""
+        if file_path in self.download_items:
+            return self.download_items[file_path]["cancel_event"]
+
+        row = ctk.CTkFrame(self.downloads_frame)
+        row.pack(fill="x", padx=5, pady=4)
+
+        name_label = ctk.CTkLabel(row, text=file_name)
+        name_label.pack(side="left", padx=5)
+
+        progress_bar_widget = ctk.CTkProgressBar(row)
+        progress_bar_widget.set(0)
+        progress_bar_widget.pack(side="left", expand=True, fill="x", padx=8)
+
+        status = ctk.CTkLabel(row, text="Queued")
+        status.pack(side="left", padx=5)
+
+        cancel_event = threading.Event()
+
+        def do_cancel():
+            cancel_event.set()
+            status.configure(text="Canceling...")
+
+        cancel_btn = ctk.CTkButton(row, text="Cancel", width=80, command=do_cancel)
+        cancel_btn.pack(side="right", padx=5)
+
+        self.download_items[file_path] = {
+            "frame": row,
+            "bar": progress_bar_widget,
+            "label": name_label,
+            "status": status,
+            "cancel_event": cancel_event,
+        }
+        return cancel_event
 
     def download_selected(self):
         """Download checked files"""
@@ -772,8 +991,14 @@ class WebsiteCopier:
 
             if url:
                 file_path = os.path.join(target_dir, file_name)
+                cancel_event = self._ensure_download_item(file_path, file_name)
+                # Submit with cancel support and per-file progress
                 future = self.executor.submit(
-                    self.backend.download_file, url, file_path, file_name
+                    self.backend.download_file,
+                    url,
+                    file_path,
+                    file_name,
+                    cancel_event,
                 )
                 futures.append(future)
 
@@ -814,7 +1039,21 @@ class WebsiteCopier:
 
         self.progress_label.configure(text="Preparing to scan...")
         self.scan_btn.configure(text="Stop Scan")
+        self.search_entry.configure(state="disabled")
+        self.search_var.set("")
         Thread(target=self.backend.scan_website, args=(url,)).start()
+
+    def scan_completed(self):
+        """Called by the backend when scanning is finished."""
+        self.search_entry.configure(state="normal")
+        self.full_tree_backup.clear()
+        for item in self.get_all_tree_items():
+            self.full_tree_backup[item] = {
+                "parent": self.tree.parent(item),
+                "index": self.tree.index(item),
+                "text": self.tree.item(item, "text"),
+                "tags": self.tree.item(item, "tags"),
+            }
 
     def run(self):
         """Starts the Tkinter main loop."""
@@ -848,6 +1087,21 @@ class WebsiteCopier:
 
     def on_closing(self):
         """Handles the window closing event."""
+        # Persist settings on close (best-effort)
+        data = {
+            "panels_visible": bool(getattr(self, "panels_visible", False)),
+            "active_tab": str(self.panels_tabview.get()),
+        }
+        settings_path = getattr(
+            self,
+            "_settings_path",
+            os.path.join(os.path.expanduser("~"), ".index_ripper_settings.json"),
+        )
+        try:
+            with open(settings_path, "w", encoding="utf-8") as file_obj:
+                json.dump(data, file_obj, ensure_ascii=False, indent=2)
+        except OSError:
+            pass
         if messagebox.askokcancel("Quit", "Do you want to quit?"):
             self.backend.should_stop = True
             self.executor.shutdown(wait=False, cancel_futures=True)
