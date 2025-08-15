@@ -61,25 +61,24 @@ jobs:
       - name: Install dependencies (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          uv pip install -r requirements.txt pyinstaller pillow
+          uv pip install --system -r requirements.txt pyinstaller pillow
 
       - name: Install dependencies (macOS & Linux)
         if: matrix.os != 'windows-latest'
         shell: bash -l {0}
         run: |
-          uv pip install -r requirements.txt pyinstaller pillow
+          uv pip install --system -r requirements.txt pyinstaller pillow
 
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper ^
-            --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+          pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
 
       - name: Build (macOS)
         if: startsWith(matrix.os, 'macos-')
         shell: bash -l {0}
         run: |
-          uv run pyinstaller -F --windowed --name=IndexRipper \
+          pyinstaller -F --windowed --name=IndexRipper \
             --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
           [ -f dist/IndexRipper ] && rm -f dist/IndexRipper || true
 
@@ -87,7 +86,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         shell: bash -l {0}
         run: |
-          uv run pyinstaller --onefile --windowed --name=IndexRipper \
+          pyinstaller --onefile --windowed --name=IndexRipper \
             --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
 
       - name: Verify artifact exists
