@@ -142,10 +142,16 @@ jobs:
                 app_src="$dir/dist/IndexRipper.app"
               elif [ -d "$dir/Contents" ]; then
                 # 展平情況：artifact 只包含 .app 內容，重建包裹
+                # 先清理可能存在的 _pkg，再逐一搬移，並忽略 _pkg 本身，避免遞迴移動
+                rm -rf "$dir/_pkg"
                 mkdir -p "$dir/_pkg/IndexRipper.app"
-                shopt -s dotglob
-                mv "$dir"/* "$dir/_pkg/IndexRipper.app"/
-                shopt -u dotglob
+                shopt -s dotglob nullglob
+                for item in "$dir"/*; do
+                  base="$(basename "$item")"
+                  [ "$base" = "_pkg" ] && continue
+                  mv "$item" "$dir/_pkg/IndexRipper.app/"
+                done
+                shopt -u dotglob nullglob
                 app_src="$dir/_pkg/IndexRipper.app"
               fi
 
