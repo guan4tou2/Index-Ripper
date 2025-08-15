@@ -126,10 +126,23 @@ jobs:
           for app in artifacts/IndexRipper-macOS-*/IndexRipper.app; do
             base_dir=$(dirname "$app")
             artifact_dir=$(basename "$base_dir")
-            zip_name="artifacts/${artifact_dir}.zip"
-            echo "Zipping $app to $zip_name"
-            (cd "$base_dir/.." && zip -r -9 "../../$zip_name" "$artifact_dir/IndexRipper.app")
+            echo "Zipping $app to artifacts/${artifact_dir}.zip"
+            (
+              cd artifacts
+              zip -r -9 "${artifact_dir}.zip" "${artifact_dir}/IndexRipper.app"
+            )
           done
+
+      - name: Normalize asset filenames
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f artifacts/IndexRipper-Windows/IndexRipper.exe ]; then
+            mv artifacts/IndexRipper-Windows/IndexRipper.exe artifacts/IndexRipper-Windows.exe
+          fi
+          if [ -f artifacts/IndexRipper-Linux/IndexRipper ]; then
+            mv artifacts/IndexRipper-Linux/IndexRipper artifacts/IndexRipper-Linux
+          fi
 
       - name: List prepared files
         run: |
@@ -140,9 +153,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/IndexRipper-Windows/IndexRipper.exe
-            artifacts/IndexRipper-Linux/IndexRipper
-            artifacts/*.zip
+            artifacts/IndexRipper-Windows.exe
+            artifacts/IndexRipper-Linux
+            artifacts/IndexRipper-macOS-*.zip
           draft: false
           prerelease: false
         env:
