@@ -118,20 +118,26 @@ jobs:
           path: artifacts
           merge-multiple: false
 
+      - name: Ensure zip is available
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y zip
+
       - name: Zip macOS apps
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
-          for app in artifacts/IndexRipper-macOS-*/IndexRipper.app; do
-            base_dir=$(dirname "$app")
-            artifact_dir=$(basename "$base_dir")
-            echo "Zipping $app to artifacts/${artifact_dir}.zip"
-            (
-              cd artifacts
-              zip -r -9 "${artifact_dir}.zip" "${artifact_dir}/IndexRipper.app"
-            )
-          done
+          (
+            cd artifacts
+            for dir in IndexRipper-macOS-*; do
+              if [ -d "$dir/IndexRipper.app" ]; then
+                zip_name="${dir}.app.zip"
+                echo "Zipping $dir/IndexRipper.app -> $zip_name"
+                zip -r -9 "$zip_name" "$dir/IndexRipper.app"
+              fi
+            done
+          )
 
       - name: Normalize asset filenames
         shell: bash
@@ -147,7 +153,7 @@ jobs:
       - name: List prepared files
         run: |
           echo "Artifacts tree:" && ls -laR artifacts || true
-          echo "Zips in artifacts:" && ls -la artifacts/*.zip || true
+          echo "macOS zips:" && ls -la artifacts/*.app.zip || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -155,7 +161,7 @@ jobs:
           files: |
             artifacts/IndexRipper-Windows.exe
             artifacts/IndexRipper-Linux
-            artifacts/IndexRipper-macOS-*.zip
+            artifacts/IndexRipper-macOS-*.app.zip
           draft: false
           prerelease: false
         env:
