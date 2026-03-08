@@ -284,10 +284,10 @@ class WebsiteCopier:
         threads_option_menu.pack(side="left", padx=5)
 
         # Toggle button to show/hide bottom panels (Downloads/Logs)
-        self.panels_visible = False
+        self.panels_visible = True
         self.toggle_panels_btn = ctk.CTkButton(
             control_frame,
-            text="Show Panels",
+            text="Hide Panels",
             width=110,
             command=self.toggle_panels,
         )
@@ -324,8 +324,10 @@ class WebsiteCopier:
         self.log_text.pack(fill="x", expand=False)
         self.log_text.configure(state="disabled")
 
-        # Hide panels by default, can be restored from settings later
-        self.panels_tabview.grid_remove()
+        try:
+            self.panels_tabview.set("Logs")
+        except tk.TclError:
+            pass
         
         # Track per-file download UI elements and cancel events
         self.downloads_panel = DownloadsPanel(self.downloads_frame, ctk, tk, threading)
@@ -343,8 +345,7 @@ class WebsiteCopier:
                 self.panels_tabview.set(active)
             except tk.TclError:
                 pass
-        # Visibility
-        visible = bool(saved.get("panels_visible", False))
+        visible = bool(saved.get("panels_visible", True))
         if visible:
             self.panels_tabview.grid()
             self.panels_visible = True
@@ -385,6 +386,7 @@ class WebsiteCopier:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.should_stop = False
         self.window.bind("<Control-f>", self.focus_search)
+        self.window.bind("<Control-l>", self.focus_logs)
         self.window.bind("<Escape>", self.clear_search)
 
     def notify_info(self, title: str, message: str) -> None:
@@ -1220,6 +1222,17 @@ class WebsiteCopier:
         if self.search_entry.cget("state") != "disabled":
             self.search_entry.focus_set()
             self.search_entry.icursor("end")
+
+    def focus_logs(self, _event=None):
+        try:
+            if not self.panels_visible:
+                self.panels_tabview.grid()
+                self.panels_visible = True
+                self.toggle_panels_btn.configure(text="Hide Panels")
+            self.panels_tabview.set("Logs")
+            self.log_text.focus_set()
+        except (AttributeError, tk.TclError):
+            pass
 
     def clear_search(self, _event=None):
         if self.search_entry.cget("state") != "disabled":

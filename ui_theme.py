@@ -33,7 +33,7 @@ def configure_treeview_style(window, ctk, ttk):
         ),
         foreground=text_color,
         relief="flat",
-        font=("Segoe UI", 10, "bold"),
+        font=("TkDefaultFont", 10, "bold"),
     )
     style.map(
         "Treeview.Heading",
