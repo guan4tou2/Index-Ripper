@@ -15,7 +15,7 @@ A graphical tool specifically designed for downloading files from "Index of" pag
 - 🌐 HTTP/HTTPS protocol support
 - 📊 Real-time download progress display
 - 🗂️ Automatic folder structure creation
-- 🔄 Download resume capability
+- 🔄 In-session pause/resume (not persistent resume)
 
 ## Main Functions
 
@@ -113,6 +113,15 @@ uv pip install -r requirements.txt
 ```bash
 # Run with uv
 uv run python index_ripper.py
+
+# Quick non-interactive smoke check
+uv run python index_ripper.py --smoke
+
+# UI smoke check (requires tkinter)
+uv run python index_ripper.py --ui-smoke
+
+# Deterministic self-test (no real network)
+uv run python index_ripper.py --self-test
 ```
 
 ## Download Prebuilt Binaries

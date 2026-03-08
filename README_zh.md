@@ -15,7 +15,7 @@
 - 🌐 支援 HTTP/HTTPS 協議
 - 📊 即時顯示下載進度
 - 🗂️ 自動建立資料夾結構
-- 🔄 支援續傳功能
+- 🔄 支援暫停/繼續（同次執行期間，非跨次續傳）
 
 ## 主要功能
 
@@ -113,6 +113,15 @@ uv pip install -r requirements.txt
 ```bash
 # 使用 uv 執行
 uv run python index_ripper.py
+
+# 快速無互動 smoke 檢查
+uv run python index_ripper.py --smoke
+
+# UI smoke 檢查（需要 tkinter）
+uv run python index_ripper.py --ui-smoke
+
+# 可重現的 self-test（不依賴真網路）
+uv run python index_ripper.py --self-test
 ```
 
 ## 下載已編譯執行檔
