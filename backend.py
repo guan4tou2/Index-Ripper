@@ -7,11 +7,12 @@ import concurrent.futures
 import os
 import socket
 from queue import Queue
-from tkinter import messagebox
 from urllib.parse import unquote, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+
+from app_utils import is_url_in_scope
 
 
 class Backend:
@@ -27,39 +28,53 @@ class Backend:
         self.ui_manager = ui_manager
         self.should_stop = False
 
+    def _log(self, message):
+        try:
+            self.ui_manager.log_message(message)
+        except AttributeError:
+            print(message)
+
+    def _notify(self, kind: str, title: str, message: str) -> None:
+        if kind == "info":
+            handler_name = "notify_info"
+        elif kind == "error":
+            handler_name = "notify_error"
+        else:
+            handler_name = "notify_warning"
+
+        handler = getattr(self.ui_manager, handler_name, None)
+        if callable(handler):
+            try:
+                handler(title, message)
+                return
+            except Exception:
+                pass
+        self._log(f"[{kind.upper()}] {title}: {message}")
+
+    def _call_ui_hook(self, hook_name, **payload):
+        hook = getattr(self.ui_manager, hook_name, None)
+        if callable(hook):
+            try:
+                hook(**payload)
+                return True
+            except Exception as ex:
+                self._log(f"[Hook] {hook_name} failed: {ex}")
+                return False
+        return False
+
     def scan_website(self, url):
         """Scans the website to find all files and directories."""
         try:
             self.ui_manager.is_scanning = True
-            self.ui_manager.scan_pause_btn.configure(state="normal")
-            self.ui_manager.progress_label.configure(text="Scanning website...")
-            self.ui_manager.scan_btn.configure(state="disabled")
-
-            if hasattr(self.ui_manager, "dir_queue"):
-                while not self.ui_manager.dir_queue.empty():
-                    self.ui_manager.dir_queue.get()
-            if hasattr(self.ui_manager, "file_queue"):
-                while not self.ui_manager.file_queue.empty():
-                    self.ui_manager.file_queue.get()
-            self.ui_manager.is_processing_dirs = False
-            self.ui_manager.is_processing_files = False
-
-            with self.ui_manager.files_dict_lock:
-                self.ui_manager.files_dict.clear()
-            with self.ui_manager.folders_dict_lock:
-                self.ui_manager.folders.clear()
-
-            self.ui_manager.tree.delete(*self.ui_manager.tree.get_children())
-            self.ui_manager.file_types.clear()
-            self.ui_manager.file_type_counts.clear()
-            for widget in self.ui_manager.filter_checkboxes_frame.winfo_children():
-                widget.destroy()
-
-            self.ui_manager.total_urls = 0
-            self.ui_manager.scanned_urls = 0
+            self._call_ui_hook("on_scan_started", url=url)
 
             all_urls = self._get_all_urls(url)
             self.ui_manager.total_urls = len(all_urls)
+            self._call_ui_hook(
+                "on_scan_progress",
+                scanned_urls=self.ui_manager.scanned_urls,
+                total_urls=self.ui_manager.total_urls,
+            )
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 # Use a queue to manage tasks to allow for pausing
@@ -107,43 +122,34 @@ class Backend:
                     finally:
                         if self.ui_manager.is_scanning:
                             self.ui_manager.scanned_urls += 1
-                            self.ui_manager.update_scan_progress()
+                            self._call_ui_hook(
+                                "on_scan_progress",
+                                scanned_urls=self.ui_manager.scanned_urls,
+                                total_urls=self.ui_manager.total_urls,
+                            )
 
             if not self.should_stop:
                 if not self.ui_manager.files_dict:
-                    messagebox.showinfo("Info", "No files found")
+                    self._notify("info", "Info", "No files found")
                 else:
-                    messagebox.showinfo(
+                    self._notify(
+                        "info",
                         "Completed",
                         f"Scan completed, found {len(self.ui_manager.files_dict)} files",
                     )
 
         except (requests.RequestException, OSError) as ex:
             if self.ui_manager.is_scanning and not self.should_stop:
-                messagebox.showerror(
-                    "Error", f"A network or OS error occurred: {str(ex)}"
-                )
+                self._notify("error", "Error", f"A network or OS error occurred: {str(ex)}")
         except RuntimeError as ex:
             if self.ui_manager.is_scanning and not self.should_stop:
-                messagebox.showerror(
-                    "Error", f"An unknown error occurred during scan: {str(ex)}"
+                self._notify(
+                    "error", "Error", f"An unknown error occurred during scan: {str(ex)}"
                 )
         finally:
             self.ui_manager.is_scanning = False
-            self.ui_manager.scan_btn.configure(state="normal", text="Scan")
-            self.ui_manager.scan_pause_btn.configure(state="disabled")
             self.ui_manager.scan_pause_event.set()
-            try:
-                if not self.should_stop:
-                    self.ui_manager.progress_label.configure(text="Scan finished.")
-                    self.ui_manager.log_message("[Scan] Finished.")
-                else:
-                    self.ui_manager.progress_label.configure(text="Scan stopped.")
-                    self.ui_manager.log_message("[Scan] Stopped by user.")
-                # Notify UI to enable search and snapshot tree for filtering
-                self.ui_manager.scan_completed()
-            except AttributeError:
-                pass
+            self._call_ui_hook("on_scan_finished", stopped=self.should_stop)
 
     def _get_all_urls(self, url, scanned_urls=None, base_url=None):
         """Get all URLs that need to be processed"""
@@ -180,7 +186,7 @@ class Backend:
                     continue
 
                 full_url = urljoin(url, href)
-                if not full_url or not full_url.startswith(base_url):
+                if not full_url or not is_url_in_scope(base_url, full_url):
                     continue
 
                 parsed_full = urlparse(full_url)
@@ -215,7 +221,7 @@ class Backend:
                     urls.extend(self._get_all_urls(final_url, scanned_urls, base_url))
             return urls
         except (requests.RequestException, socket.timeout) as ex:
-            print(f"Error getting URL list for {url}: {str(ex)}")
+            self._log(f"[Scan] Error getting URL list for {url}: {str(ex)}")
             return []
 
     def _process_directory(self, url):
@@ -223,17 +229,11 @@ class Backend:
         try:
             parsed_path = urlparse(url).path
             dir_path = parsed_path.rstrip("/")
-            with self.ui_manager.folders_dict_lock:
-                if not hasattr(self.ui_manager, "dir_queue"):
-                    self.ui_manager.dir_queue = Queue()
-                self.ui_manager.dir_queue.put((dir_path, url))
-            if not (
-                hasattr(self.ui_manager, "is_processing_dirs")
-                and self.ui_manager.is_processing_dirs
-            ):
-                self.ui_manager.process_dir_queue()
+            self._call_ui_hook(
+                "on_scan_item", is_directory=True, path=dir_path, url=url
+            )
         except (OSError, ValueError) as ex:
-            print(f"Error processing directory path {url}: {str(ex)}")
+            self._log(f"[Scan] Error processing directory path {url}: {str(ex)}")
 
     def _process_file(self, url):
         """Process file"""
@@ -265,24 +265,23 @@ class Backend:
                 )
                 file_type = head.headers.get("content-type", "Unknown")
 
-                with self.ui_manager.files_dict_lock:
-                    if not hasattr(self.ui_manager, "file_queue"):
-                        self.ui_manager.file_queue = Queue()
-                    self.ui_manager.file_queue.put(
-                        (dir_path, url, file_name, size, file_type, full_path)
-                    )
-                if (
-                    not hasattr(self.ui_manager, "is_processing_files")
-                    or not self.ui_manager.is_processing_files
-                ):
-                    self.ui_manager.window.after(0, self.ui_manager.process_file_queue)
+                self._call_ui_hook(
+                    "on_scan_item",
+                    is_directory=False,
+                    path=dir_path,
+                    url=url,
+                    file_name=file_name,
+                    size=size,
+                    file_type=file_type,
+                    full_path=full_path,
+                )
             except (requests.RequestException, socket.timeout) as ex:
-                print(f"Could not process file {url}: {ex}")
+                self._log(f"[Scan] Could not process file {url}: {ex}")
                 with self.ui_manager.files_dict_lock:
                     if full_path in self.ui_manager.files_dict:
                         del self.ui_manager.files_dict[full_path]
         except (OSError, ValueError) as ex:
-            print(f"Error processing file URL {url}: {str(ex)}")
+            self._log(f"[Scan] Error processing file URL {url}: {str(ex)}")
 
     def download_file(self, url, file_path, file_name, cancel_event=None):
         """Downloads a single file."""
@@ -312,7 +311,7 @@ class Backend:
                             pass
                         return False
                     if self.should_stop:
-                        print(f"Stopping download for {file_name}")
+                        self._log(f"[Download] Stopping download for {file_name}")
                         return False
                     if not data:
                         break
@@ -331,7 +330,7 @@ class Backend:
             return True
 
         except requests.exceptions.RequestException as ex:
-            print(f"Error downloading {file_name}: {str(ex)}")
+            self._log(f"[Download] Error downloading {file_name}: {str(ex)}")
             try:
                 self.ui_manager.update_download_status(file_path, "Failed")
                 self.ui_manager.log_message(f"[Download] Error: {file_name} - {ex}")
@@ -339,7 +338,7 @@ class Backend:
                 pass
             return False
         except IOError as ex:
-            print(f"File error for {file_name}: {str(ex)}")
+            self._log(f"[Download] File error for {file_name}: {str(ex)}")
             try:
                 self.ui_manager.update_download_status(file_path, "Failed")
                 self.ui_manager.log_message(
@@ -358,8 +357,5 @@ class Backend:
                 if future.result():
                     completed += 1
             except (concurrent.futures.CancelledError, RuntimeError) as ex:
-                print(f"Download error in future: {str(ex)}")
-
-        self.ui_manager.window.after(
-            0, self.ui_manager.downloads_completed, completed, total
-        )
+                self._log(f"[Download] Error in future: {str(ex)}")
+        self._call_ui_hook("on_downloads_finished", completed=completed, total=total)

@@ -1,23 +1,48 @@
 """Index Ripper UI using customtkinter with search, logs, and per-file downloads."""
 
 # pylint: disable=too-many-lines
-import json
 import os
 import posixpath
+import sys
 import threading
-import tkinter as tk
 from concurrent.futures import ThreadPoolExecutor
-from queue import Queue
+from queue import Empty, Queue
 from threading import Event, Thread
-from tkinter import filedialog, messagebox, ttk
 from urllib.parse import unquote, urljoin, urlparse
 
-import customtkinter as ctk
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+if "--smoke" in sys.argv:
+    print("SMOKE_OK")
+    raise SystemExit(0)
+
+if "--self-test" in sys.argv:
+    from self_test import run_self_test
+
+    result = run_self_test()
+    print(
+        f"SELF_TEST_OK total={result.total} files={result.files} dirs={result.directories}"
+    )
+    raise SystemExit(0)
+
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
+import customtkinter as ctk  # type: ignore
+import requests  # type: ignore
+from requests.adapters import HTTPAdapter  # type: ignore
+from urllib3.util.retry import Retry  # type: ignore
 
 from backend import Backend
+from ui_downloads import DownloadsPanel
+from app_utils import (
+    default_download_folder,
+    normalize_extension,
+    safe_join,
+    sanitize_filename,
+    sanitize_path_segment,
+    shorten_path,
+)
+from settings_store import load_settings, save_settings
+from ui_theme import apply_app_theme, configure_treeview_style, treeview_tag_colors
 
 
 class WebsiteCopier:
@@ -31,8 +56,7 @@ class WebsiteCopier:
 
     def __init__(self):
         """Initializes the main window and UI components."""
-        ctk.set_appearance_mode("Dark")
-        ctk.set_default_color_theme("blue")
+        apply_app_theme(ctk)
 
         self.window = ctk.CTk()
         self.window.title("Index Ripper")
@@ -57,8 +81,12 @@ class WebsiteCopier:
         # 初始化队列和处理状态
         self.dir_queue = Queue()
         self.file_queue = Queue()
+        self.scan_item_buffer = Queue()
         self.is_processing_dirs = False
         self.is_processing_files = False
+        self.scan_flush_interval_ms = 16
+        self.scan_flush_batch_size = 200
+        self.scan_flush_job = None
 
         # --- Main Layout ---
         self.window.grid_columnconfigure(0, weight=1)
@@ -84,6 +112,17 @@ class WebsiteCopier:
         # Scan buttons
         scan_buttons_frame = ctk.CTkFrame(self.top_frame, fg_color="transparent")
         scan_buttons_frame.grid(row=0, column=1, padx=10, pady=5)
+
+        self.status_chip = ctk.CTkLabel(
+            self.top_frame,
+            text="Ready",
+            fg_color=("#DCFCE7", "#14532D"),
+            text_color=("#14532D", "#DCFCE7"),
+            corner_radius=12,
+            padx=10,
+            pady=2,
+        )
+        self.status_chip.grid(row=0, column=2, padx=(0, 10), pady=5, sticky="e")
 
         self.scan_btn = ctk.CTkButton(
             scan_buttons_frame, text="Scan", command=self.start_scan
@@ -152,48 +191,7 @@ class WebsiteCopier:
         self.search_entry.grid(row=0, column=1, sticky="ew")
         self.full_tree_backup = {}
 
-        # --- Treeview Styling ---
-        style = ttk.Style()
-        bg_color = self.window._apply_appearance_mode(
-            ctk.ThemeManager.theme["CTkFrame"]["fg_color"]
-        )
-        text_color = self.window._apply_appearance_mode(
-            ctk.ThemeManager.theme["CTkLabel"]["text_color"]
-        )
-        selected_color = self.window._apply_appearance_mode(
-            ctk.ThemeManager.theme["CTkButton"]["fg_color"]
-        )
-
-        style.theme_use("default")
-        style.configure(
-            "Treeview",
-            background=bg_color,
-            foreground=text_color,
-            fieldbackground=bg_color,
-            borderwidth=0,
-            rowheight=22,
-        )
-        style.map("Treeview", background=[("selected", selected_color)])
-        style.configure(
-            "Treeview.Heading",
-            background=self.window._apply_appearance_mode(
-                ctk.ThemeManager.theme["CTkFrame"]["top_fg_color"]
-            ),
-            foreground=text_color,
-            relief="flat",
-            font=("Arial", 10, "bold"),
-        )
-        style.map(
-            "Treeview.Heading",
-            background=[
-                (
-                    "active",
-                    self.window._apply_appearance_mode(
-                        ctk.ThemeManager.theme["CTkButton"]["hover_color"]
-                    ),
-                )
-            ],
-        )
+        configure_treeview_style(self.window, ctk, ttk)
 
         self.tree = ttk.Treeview(
             self.tree_frame,
@@ -202,9 +200,10 @@ class WebsiteCopier:
             style="Treeview",
         )
 
-        self.tree.tag_configure("oddrow", background="#2B2B2B")
-        self.tree.tag_configure("evenrow", background="#2E2E2E")
-        self.tree.tag_configure("checked", foreground="#50C878")  # Emerald Green
+        colors = treeview_tag_colors(self.window)
+        self.tree.tag_configure("oddrow", background=colors["oddrow"])
+        self.tree.tag_configure("evenrow", background=colors["evenrow"])
+        self.tree.tag_configure("checked", foreground=colors["checked"])
 
         # Set column configuration
         self.tree["columns"] = ("size", "type")
@@ -327,23 +326,16 @@ class WebsiteCopier:
 
         # Hide panels by default, can be restored from settings later
         self.panels_tabview.grid_remove()
-
+        
         # Track per-file download UI elements and cancel events
-        self.download_items = {}
+        self.downloads_panel = DownloadsPanel(self.downloads_frame, ctk, tk, threading)
 
         # Load and apply saved settings (panels visibility and active tab)
         self._settings_path = os.path.join(
             os.path.expanduser("~"),
             ".index_ripper_settings.json",
         )
-        saved: dict = {}
-        if os.path.exists(self._settings_path):
-            try:
-                with open(self._settings_path, "r", encoding="utf-8") as file_obj:
-                    content = file_obj.read().strip()
-                    saved = json.loads(content) if content else {}
-            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-                saved = {}
+        saved = load_settings(self._settings_path) if os.path.exists(self._settings_path) else {}
         # Active tab
         active = saved.get("active_tab")
         if active in ("Downloads", "Logs"):
@@ -392,6 +384,26 @@ class WebsiteCopier:
         self.scanned_urls = 0
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.should_stop = False
+        self.window.bind("<Control-f>", self.focus_search)
+        self.window.bind("<Escape>", self.clear_search)
+
+    def notify_info(self, title: str, message: str) -> None:
+        try:
+            messagebox.showinfo(title, message)
+        except Exception:
+            self.log_message(f"[INFO] {title}: {message}")
+
+    def notify_warning(self, title: str, message: str) -> None:
+        try:
+            messagebox.showwarning(title, message)
+        except Exception:
+            self.log_message(f"[WARN] {title}: {message}")
+
+    def notify_error(self, title: str, message: str) -> None:
+        try:
+            messagebox.showerror(title, message)
+        except Exception:
+            self.log_message(f"[ERROR] {title}: {message}")
 
     def toggle_panels(self):
         """Show or hide the bottom panels (Downloads/Logs)."""
@@ -415,19 +427,14 @@ class WebsiteCopier:
             "panels_visible": bool(self.panels_visible),
             "active_tab": str(self.panels_tabview.get()),
         }
-        try:
-            with open(self._settings_path, "w", encoding="utf-8") as file_obj:
-                json.dump(data, file_obj, ensure_ascii=False, indent=2)
-        except OSError:
-            # Ignore persistence errors
-            pass
+        save_settings(self._settings_path, data)
 
     def choose_download_path(self):
         """Opens a dialog to choose a download directory."""
         path = filedialog.askdirectory(title="Choose Download Location")
         if path:
             self.download_path = path
-            self.path_btn.configure(text=f"Location: ...{path[-30:]}")
+            self.path_btn.configure(text=f"Location: {shorten_path(path)}")
 
     def toggle_pause(self):
         """Pauses or resumes the download process."""
@@ -446,18 +453,15 @@ class WebsiteCopier:
             self.scan_pause_event.clear()
             self.scan_pause_btn.configure(text="Resume Scan")
             self.progress_label.configure(text="Scan paused")
+            self.status_chip.configure(text="Scan Paused")
         else:
             self.scan_pause_event.set()
             self.scan_pause_btn.configure(text="Pause Scan")
+            self.status_chip.configure(text="Scanning")
 
     def filter_file_type(self, file_name):
         """Check if file should be displayed"""
-        ext = os.path.splitext(file_name)[1].lower()
-        if not ext:
-            ext = "(No Extension)"
-        if ext.startswith("."):
-            ext = ext[1:]
-        ext = f".{ext}"
+        ext = normalize_extension(file_name)
 
         existing_ext = next(
             (e for e in self.file_types if e.lower() == ext.lower()), None
@@ -589,6 +593,204 @@ class WebsiteCopier:
             )
             self.window.update_idletasks()
 
+    def _run_on_ui_thread(self, callback, *args, wait=False):
+        """Run a callback on Tk main thread."""
+        if threading.current_thread() is threading.main_thread():
+            callback(*args)
+            return
+
+        done = threading.Event()
+        error_box = {}
+
+        def wrapped():
+            try:
+                callback(*args)
+            except Exception as ex:
+                error_box["error"] = ex
+            finally:
+                done.set()
+
+        self.window.after(0, wrapped)
+        if wait:
+            done.wait()
+            if "error" in error_box:
+                raise error_box["error"]
+
+    def on_scan_started(self, url):
+        """Backend hook: initialize UI state before scan starts."""
+        self._run_on_ui_thread(self._on_scan_started_ui, url, wait=True)
+
+    def _on_scan_started_ui(self, _url):
+        self.is_scanning = True
+        self.scan_pause_btn.configure(state="normal", text="Pause Scan")
+        self.progress_label.configure(text="Scanning website...")
+        self.scan_btn.configure(state="normal", text="Stop Scan")
+        self.status_chip.configure(text="Scanning")
+
+        self._cancel_scan_item_flush()
+        while not self.scan_item_buffer.empty():
+            self.scan_item_buffer.get()
+
+        while not self.dir_queue.empty():
+            self.dir_queue.get()
+        while not self.file_queue.empty():
+            self.file_queue.get()
+        self.is_processing_dirs = False
+        self.is_processing_files = False
+
+        with self.files_dict_lock:
+            self.files_dict.clear()
+        with self.folders_dict_lock:
+            self.folders.clear()
+
+        self.tree.delete(*self.tree.get_children())
+        self.checked_items.clear()
+        self.file_types.clear()
+        self.file_type_counts.clear()
+        for widget in self.filter_checkboxes_frame.winfo_children():
+            widget.destroy()
+
+        self.total_urls = 0
+        self.scanned_urls = 0
+        self.progress_bar.set(0)
+        self.search_entry.configure(state="disabled")
+        self.search_var.set("")
+
+    def on_scan_progress(self, scanned_urls, total_urls):
+        """Backend hook: update scan counters/progress."""
+        self._run_on_ui_thread(self._on_scan_progress_ui, scanned_urls, total_urls)
+
+    def _on_scan_progress_ui(self, scanned_urls, total_urls):
+        self.scanned_urls = scanned_urls
+        self.total_urls = total_urls
+        self.update_scan_progress()
+
+    def on_scan_item(
+        self,
+        is_directory,
+        path,
+        url,
+        file_name=None,
+        size=None,
+        file_type=None,
+        full_path=None,
+    ):
+        """Backend hook: enqueue a discovered directory/file for UI processing."""
+        self._run_on_ui_thread(
+            self._on_scan_item_ui,
+            is_directory,
+            path,
+            url,
+            file_name,
+            size,
+            file_type,
+            full_path,
+        )
+
+    def _on_scan_item_ui(
+        self,
+        is_directory,
+        path,
+        url,
+        file_name,
+        size,
+        file_type,
+        full_path,
+    ):
+        if not self.is_scanning:
+            return
+        self.scan_item_buffer.put(
+            (is_directory, path, url, file_name, size, file_type, full_path)
+        )
+        self._schedule_scan_item_flush()
+
+    def _schedule_scan_item_flush(self):
+        if self.scan_flush_job is not None:
+            return
+        if not self.is_scanning:
+            return
+        self.scan_flush_job = self.window.after(
+            self.scan_flush_interval_ms, self._flush_scan_item_buffer
+        )
+
+    def _cancel_scan_item_flush(self):
+        if self.scan_flush_job is None:
+            return
+        try:
+            self.window.after_cancel(self.scan_flush_job)
+        except tk.TclError:
+            pass
+        finally:
+            self.scan_flush_job = None
+
+    def _flush_scan_item_buffer(self, max_items=None, reschedule=True):
+        self.scan_flush_job = None
+        if max_items is None:
+            max_items = self.scan_flush_batch_size
+
+        processed = 0
+        added_dir = False
+        added_file = False
+
+        while processed < max_items:
+            try:
+                (
+                    is_directory,
+                    path,
+                    url,
+                    file_name,
+                    size,
+                    file_type,
+                    full_path,
+                ) = self.scan_item_buffer.get_nowait()
+            except Empty:
+                break
+
+            if is_directory:
+                with self.folders_dict_lock:
+                    self.dir_queue.put((path, url))
+                added_dir = True
+            else:
+                self.file_queue.put((path, url, file_name, size, file_type, full_path))
+                added_file = True
+            processed += 1
+
+        if added_dir and not self.is_processing_dirs:
+            self.window.after(0, self.process_dir_queue)
+        if added_file and not self.is_processing_files:
+            self.window.after(0, self.process_file_queue)
+
+        if reschedule and self.is_scanning and not self.scan_item_buffer.empty():
+            self._schedule_scan_item_flush()
+
+    def on_scan_finished(self, stopped):
+        """Backend hook: finalize UI state after scan ends."""
+        self._run_on_ui_thread(self._on_scan_finished_ui, stopped)
+
+    def _on_scan_finished_ui(self, stopped):
+        self.is_scanning = False
+        self._cancel_scan_item_flush()
+        while not self.scan_item_buffer.empty():
+            self._flush_scan_item_buffer(
+                max_items=self.scan_flush_batch_size,
+                reschedule=False,
+            )
+
+        self.scan_btn.configure(state="normal", text="Scan")
+        self.scan_pause_btn.configure(state="disabled", text="Pause Scan")
+        self.scan_pause_event.set()
+        if not stopped:
+            self.progress_label.configure(text="Scan finished.")
+            self.log_message("[Scan] Finished.")
+        else:
+            self.progress_label.configure(text="Scan stopped.")
+            self.log_message("[Scan] Stopped by user.")
+        self.scan_completed()
+
+    def on_downloads_finished(self, completed, total):
+        """Backend hook: finalize download summary on main thread."""
+        self._run_on_ui_thread(self.downloads_completed, completed, total)
+
     def process_dir_queue(self):
         """Processes the directory creation queue to avoid UI blocking."""
         try:
@@ -686,12 +888,7 @@ class WebsiteCopier:
 
     def update_file_types(self, file_name):
         """Updates the file type filter UI."""
-        ext = os.path.splitext(file_name)[1].lower()
-        if not ext:
-            ext = "(No Extension)"
-        if ext.startswith("."):
-            ext = ext[1:]
-        ext = f".{ext}"
+        ext = normalize_extension(file_name)
 
         if ext not in self.file_types:
             self.file_types[ext] = ctk.BooleanVar(value=False)
@@ -734,11 +931,7 @@ class WebsiteCopier:
                 text = self.tree.item(item, "text")
                 file_name = text.replace(f"{self.file_icon} ", "")
 
-                ext = os.path.splitext(file_name)[1].lower()
-                if not ext:
-                    ext = "(No Extension)"
-                elif not ext.startswith("."):
-                    ext = f".{ext}"
+                ext = normalize_extension(file_name)
 
                 if ext in self.file_types:
                     should_be_checked = self.file_types[ext].get()
@@ -868,13 +1061,9 @@ class WebsiteCopier:
 
     def _update_progress_ui(self, file_path, file_name, progress):
         """Update per-file progress if present; fallback to global bar."""
-        item = self.download_items.get(file_path)
+        item = self.downloads_panel._items.get(file_path)
         if item:
-            try:
-                item["bar"].set(progress / 100)
-                item["status"].configure(text=f"Downloading {progress:.1f}%")
-            except tk.TclError:
-                pass
+            self.downloads_panel.set_progress(file_path, progress)
         else:
             self.progress_bar.set(progress / 100)
             self.progress_label.configure(
@@ -883,12 +1072,9 @@ class WebsiteCopier:
 
     def update_download_status(self, file_path, status_text):
         """Update status label for a specific download item."""
-        item = self.download_items.get(file_path)
+        item = self.downloads_panel._items.get(file_path)
         if item:
-            try:
-                item["status"].configure(text=status_text)
-            except tk.TclError:
-                pass
+            self.downloads_panel.set_status(file_path, status_text)
 
     def log_message(self, message: str):
         """Append a message to the log panel."""
@@ -899,42 +1085,6 @@ class WebsiteCopier:
             self.log_text.configure(state="disabled")
         except tk.TclError:
             pass
-
-    def _ensure_download_item(self, file_path, file_name):
-        """Create UI row for a download if not exists, and return cancel event."""
-        if file_path in self.download_items:
-            return self.download_items[file_path]["cancel_event"]
-
-        row = ctk.CTkFrame(self.downloads_frame)
-        row.pack(fill="x", padx=5, pady=4)
-
-        name_label = ctk.CTkLabel(row, text=file_name)
-        name_label.pack(side="left", padx=5)
-
-        progress_bar_widget = ctk.CTkProgressBar(row)
-        progress_bar_widget.set(0)
-        progress_bar_widget.pack(side="left", expand=True, fill="x", padx=8)
-
-        status = ctk.CTkLabel(row, text="Queued")
-        status.pack(side="left", padx=5)
-
-        cancel_event = threading.Event()
-
-        def do_cancel():
-            cancel_event.set()
-            status.configure(text="Canceling...")
-
-        cancel_btn = ctk.CTkButton(row, text="Cancel", width=80, command=do_cancel)
-        cancel_btn.pack(side="right", padx=5)
-
-        self.download_items[file_path] = {
-            "frame": row,
-            "bar": progress_bar_widget,
-            "label": name_label,
-            "status": status,
-            "cancel_event": cancel_event,
-        }
-        return cancel_event
 
     def download_selected(self):
         """Download checked files"""
@@ -967,6 +1117,7 @@ class WebsiteCopier:
             file_name = text.replace(f"{self.file_icon} ", "")
 
             path_parts = []
+            sanitized_path_parts = []
             current = item
             while current:
                 parent = self.tree.parent(current)
@@ -975,29 +1126,38 @@ class WebsiteCopier:
                 parent_text = self.tree.item(parent)["text"]
                 folder_name = parent_text.replace(f"{self.folder_icon} ", "")
                 path_parts.append(folder_name)
+                sanitized_path_parts.append(sanitize_path_segment(folder_name))
                 current = parent
 
             path_parts.reverse()
-            relative_path = os.path.join(*path_parts)
-
-            target_dir = os.path.join(self.download_path, relative_path)
-            os.makedirs(target_dir, exist_ok=True)
+            sanitized_path_parts.reverse()
+            relative_path = os.path.join(*path_parts) if path_parts else ""
 
             full_path_key = os.path.join(relative_path, file_name).replace("\\", "/")
             if full_path_key.startswith("/"):
                 full_path_key = full_path_key[1:]
 
+            safe_file_name = sanitize_filename(file_name)
+
+            try:
+                target_dir = safe_join(self.download_path, sanitized_path_parts)
+                file_path = safe_join(self.download_path, sanitized_path_parts + [safe_file_name])
+            except ValueError:
+                self.log_message(f"[Download] Skipped unsafe path: {full_path_key}")
+                continue
+
+            os.makedirs(target_dir, exist_ok=True)
+
             url = self.files_dict.get(full_path_key)
 
             if url:
-                file_path = os.path.join(target_dir, file_name)
-                cancel_event = self._ensure_download_item(file_path, file_name)
+                cancel_event = self.downloads_panel.ensure(file_path, safe_file_name)
                 # Submit with cancel support and per-file progress
                 future = self.executor.submit(
                     self.backend.download_file,
                     url,
                     file_path,
-                    file_name,
+                    safe_file_name,
                     cancel_event,
                 )
                 futures.append(future)
@@ -1026,18 +1186,18 @@ class WebsiteCopier:
             self.backend.should_stop = True
             self.scan_btn.configure(text="Stopping...")
             self.scan_btn.configure(state="disabled")
+            self.status_chip.configure(text="Stopping")
             return
 
         self.backend.should_stop = False
         try:
-            parsed_url = urlparse(url)
-            site_name = parsed_url.netloc.replace(":", "_")
-            self.download_path = os.path.join(os.getcwd(), site_name)
+            self.download_path = default_download_folder(url, os.getcwd())
         except (OSError, TypeError) as ex:
             print(f"Error setting download path: {str(ex)}")
             self.download_path = os.path.join(os.getcwd(), "downloads")
 
         self.progress_label.configure(text="Preparing to scan...")
+        self.status_chip.configure(text="Scanning")
         self.scan_btn.configure(text="Stop Scan")
         self.search_entry.configure(state="disabled")
         self.search_var.set("")
@@ -1054,6 +1214,16 @@ class WebsiteCopier:
                 "text": self.tree.item(item, "text"),
                 "tags": self.tree.item(item, "tags"),
             }
+        self.status_chip.configure(text="Ready")
+
+    def focus_search(self, _event=None):
+        if self.search_entry.cget("state") != "disabled":
+            self.search_entry.focus_set()
+            self.search_entry.icursor("end")
+
+    def clear_search(self, _event=None):
+        if self.search_entry.cget("state") != "disabled":
+            self.search_var.set("")
 
     def run(self):
         """Starts the Tkinter main loop."""
@@ -1097,11 +1267,7 @@ class WebsiteCopier:
             "_settings_path",
             os.path.join(os.path.expanduser("~"), ".index_ripper_settings.json"),
         )
-        try:
-            with open(settings_path, "w", encoding="utf-8") as file_obj:
-                json.dump(data, file_obj, ensure_ascii=False, indent=2)
-        except OSError:
-            pass
+        save_settings(settings_path, data)
         if messagebox.askokcancel("Quit", "Do you want to quit?"):
             self.backend.should_stop = True
             self.executor.shutdown(wait=False, cancel_futures=True)
@@ -1121,5 +1287,20 @@ class WebsiteCopier:
 
 
 if __name__ == "__main__":
+    if "--ui-smoke" in sys.argv:
+        app = WebsiteCopier()
+        try:
+            for _ in range(3):
+                app.window.update_idletasks()
+                app.window.update()
+            app.window.destroy()
+        except Exception:
+            try:
+                app.window.destroy()
+            except Exception:
+                pass
+        print("UI_SMOKE_OK")
+        raise SystemExit(0)
+
     app = WebsiteCopier()
     app.run()
