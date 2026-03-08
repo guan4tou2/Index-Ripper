@@ -114,15 +114,28 @@ uv pip install -r requirements.txt
 # Run with uv
 uv run python index_ripper.py
 
+# Run ttkbootstrap UI entry
+uv run python index_ripper_ttkb.py
+
 # Quick non-interactive smoke check
 uv run python index_ripper.py --smoke
 
 # UI smoke check (requires tkinter)
 uv run python index_ripper.py --ui-smoke
 
+# ttkbootstrap UI smoke check
+uv run python index_ripper_ttkb.py --ui-smoke
+
 # Deterministic self-test (no real network)
 uv run python index_ripper.py --self-test
+
+# Deterministic self-test for ttkbootstrap entry
+uv run python index_ripper_ttkb.py --self-test
 ```
+
+`index_ripper_ttkb.py --ui-smoke` intentionally uses a minimal/safe UI construction path,
+so it can validate Tk window startup across environments where some Pillow Tk image
+bridges may be unavailable.
 
 ## Download Prebuilt Binaries
 

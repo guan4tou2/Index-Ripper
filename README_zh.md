@@ -114,15 +114,27 @@ uv pip install -r requirements.txt
 # 使用 uv 執行
 uv run python index_ripper.py
 
+# 執行 ttkbootstrap UI 入口
+uv run python index_ripper_ttkb.py
+
 # 快速無互動 smoke 檢查
 uv run python index_ripper.py --smoke
 
 # UI smoke 檢查（需要 tkinter）
 uv run python index_ripper.py --ui-smoke
 
+# ttkbootstrap UI smoke 檢查
+uv run python index_ripper_ttkb.py --ui-smoke
+
 # 可重現的 self-test（不依賴真網路）
 uv run python index_ripper.py --self-test
+
+# ttkbootstrap 入口的可重現 self-test
+uv run python index_ripper_ttkb.py --self-test
 ```
+
+`index_ripper_ttkb.py --ui-smoke` 會刻意使用最小且安全的 UI 建立路徑，
+讓不同環境即使缺少部分 Pillow Tk 影像橋接能力，也能穩定驗證 Tk 視窗可啟動。
 
 ## 下載已編譯執行檔
 
