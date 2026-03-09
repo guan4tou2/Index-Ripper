@@ -285,7 +285,60 @@ class WebsiteCopierCtk:
         ).pack(side="left")
 
     def _build_treeview(self) -> None:
-        pass
+        tree_frame = ctk.CTkFrame(self.window, fg_color="transparent")
+        tree_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(4, 0))
+        tree_frame.grid_columnconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(1, weight=1)
+
+        # 搜尋欄
+        search_bar = ctk.CTkFrame(tree_frame, fg_color="transparent")
+        search_bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        search_bar.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(search_bar, text="Search").grid(row=0, column=0, padx=(0, 6))
+        self.search_var = tk.StringVar()
+        self.search_entry = ctk.CTkEntry(search_bar, textvariable=self.search_var)
+        self.search_entry.grid(row=0, column=1, sticky="ew")
+        self.search_var.trace_add("write", self.on_search_filter_changed)
+
+        # Treeview
+        configure_treeview_style(self.window, ctk, ttk)
+        self.tree = ttk.Treeview(
+            tree_frame,
+            columns=("size", "type", "full_path"),
+            show="tree headings",
+            selectmode="extended",
+        )
+        self.tree.heading("#0", text="Path", command=lambda: self.sort_tree("#0"))
+        self.tree.heading("size", text="Size", command=lambda: self.sort_tree("size"))
+        self.tree.heading("type", text="Type", command=lambda: self.sort_tree("type"))
+        self.tree.column("#0", width=600, stretch=True)
+        self.tree.column("size", width=120, stretch=False, anchor="e")
+        self.tree.column("type", width=240, stretch=False)
+        self.tree.column("full_path", width=0, stretch=False)
+
+        tag_colors = treeview_tag_colors(self.window)
+        self.tree.tag_configure("checked", foreground=tag_colors["checked"])
+
+        style = ttk.Style()
+        style.configure("Treeview", font=("SF Pro Text", 14), rowheight=34)
+        style.configure("Treeview.Heading", font=("SF Pro Text", 13, "bold"))
+
+        self.tree.grid(row=1, column=0, sticky="nsew")
+
+        tree_scroll = tk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=tree_scroll.set)
+        tree_scroll.grid(row=1, column=1, sticky="ns")
+
+        # 鍵盤與滑鼠綁定
+        self.tree.bind("<Command-a>", self._on_tree_select_all)
+        self.tree.bind("<Control-a>", self._on_tree_select_all)
+        self.tree.bind("<Button-1>", self.on_tree_click)
+        self.tree.bind("<Button-3>", self.show_context_menu)
+        self.tree.bind("<Button-2>", self.show_context_menu)
+        self.tree.bind("<Control-Button-1>", self.show_context_menu)
+        self.tree.bind("<B1-Motion>", self.on_tree_drag_select)
+        self.tree.bind("<space>", self.on_tree_space)
+        self.tree.bind("<Return>", self.on_tree_enter)
 
     def _build_progress_section(self) -> None:
         pass
@@ -392,10 +445,178 @@ class WebsiteCopierCtk:
         except Exception:
             pass
 
-    def select_all(self): pass
-    def deselect_all(self): pass
-    def expand_all(self): pass
-    def collapse_all(self): pass
+    # --- Treeview interaction helpers ---
+
+    def _all_tree_items(self):
+        out = []
+        stack = list(self.tree.get_children(""))
+        while stack:
+            item = stack.pop()
+            out.append(item)
+            stack.extend(self.tree.get_children(item))
+        return out
+
+    def _focused_tree_item(self):
+        try:
+            item = self.tree.focus()
+            if item and self.tree.exists(item):
+                return item
+            selected = self.tree.selection()
+            if selected:
+                return selected[0]
+        except tk.TclError:
+            return ""
+        return ""
+
+    def _strip_checkmark(self, text: str) -> str:
+        if text.startswith(self.checkbox_checked):
+            return text[len(self.checkbox_checked):]
+        return text
+
+    def _set_item_checked_visual(self, item: str, checked: bool) -> None:
+        try:
+            text = self.tree.item(item, "text")
+        except tk.TclError:
+            return
+        raw = self._strip_checkmark(text or "")
+        display = f"{self.checkbox_checked}{raw}" if checked else raw
+        try:
+            self.tree.item(item, text=display)
+        except tk.TclError:
+            return
+
+    def toggle_check(self, item, force_check=None):
+        try:
+            if not self.tree.exists(item):
+                return
+            tags = list(self.tree.item(item, "tags"))
+        except tk.TclError:
+            return
+
+        is_checked = "checked" in tags
+        new_checked = (not is_checked) if force_check is None else bool(force_check)
+
+        if "file" in tags:
+            full_path = self.tree.set(item, "full_path")
+            if full_path:
+                if new_checked:
+                    self.checked_items.add(full_path)
+                else:
+                    self.checked_items.discard(full_path)
+
+        if new_checked and "checked" not in tags:
+            tags.append("checked")
+        if (not new_checked) and "checked" in tags:
+            tags.remove("checked")
+        self.tree.item(item, tags=tuple(tags))
+        self._set_item_checked_visual(item, new_checked)
+
+        if "folder" in tags:
+            for child in self.tree.get_children(item):
+                self.toggle_check(child, force_check=new_checked)
+
+    def on_tree_click(self, event):
+        try:
+            item = self.tree.identify("item", event.x, event.y)
+            if not item:
+                return
+            self.drag_anchor_item = item
+            self.tree.focus(item)
+            element = self.tree.identify_element(event.x, event.y)
+            if "indicator" in element:
+                return
+            modifier_mask = 0x0001 | 0x0004 | 0x0008 | 0x0010 | 0x0080
+            if event.state & modifier_mask:
+                return
+            if self.tree.identify_column(event.x) == "#0":
+                self.toggle_check(item)
+        except tk.TclError:
+            return
+
+    def on_tree_drag_select(self, event):
+        try:
+            if not self.drag_anchor_item:
+                return
+            target = self.tree.identify_row(event.y)
+            if not target:
+                return
+            items = self._all_tree_items()
+            if self.drag_anchor_item not in items or target not in items:
+                return
+            a = items.index(self.drag_anchor_item)
+            b = items.index(target)
+            lo, hi = (a, b) if a <= b else (b, a)
+            self.tree.selection_set(items[lo: hi + 1])
+        except tk.TclError:
+            return
+
+    def on_tree_space(self, _event=None):
+        item = self._focused_tree_item()
+        if item:
+            self.toggle_check(item)
+            return "break"
+        return None
+
+    def on_tree_enter(self, _event=None):
+        item = self._focused_tree_item()
+        if not item:
+            return None
+        try:
+            tags = self.tree.item(item, "tags")
+            if "folder" in tags:
+                self.tree.item(item, open=not bool(self.tree.item(item, "open")))
+            else:
+                self.toggle_check(item)
+        except tk.TclError:
+            return None
+        return "break"
+
+    def _on_tree_select_all(self, _event=None):
+        self.select_all()
+        return "break"
+
+    def show_context_menu(self, event):
+        try:
+            item = self.tree.identify_row(event.y)
+            if item:
+                self.tree.focus(item)
+                self.tree.selection_set(item)
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.context_menu.grab_release()
+        return "break"
+
+    def select_all(self):
+        for item in self._all_tree_items():
+            self.toggle_check(item, force_check=True)
+
+    def deselect_all(self):
+        for item in self._all_tree_items():
+            self.toggle_check(item, force_check=False)
+
+    def expand_all(self, parent=""):
+        for item in self.tree.get_children(parent):
+            self.tree.item(item, open=True)
+            self.expand_all(item)
+
+    def collapse_all(self, parent=""):
+        for item in self.tree.get_children(parent):
+            self.tree.item(item, open=False)
+            self.collapse_all(item)
+
+    def sort_tree(self, col):
+        try:
+            items = [(self.tree.set(i, col), i) for i in self.tree.get_children("")]
+            items.sort(reverse=self.sort_reverse)
+            for index, (_, i) in enumerate(items):
+                self.tree.move(i, "", index)
+            self.sort_reverse = not self.sort_reverse
+        except tk.TclError:
+            pass
+
+    def on_search_filter_changed(self, *args):
+        pass
+
     def start_scan(self): pass
     def toggle_scan_pause(self): pass
     def clear_scan_results(self): pass
