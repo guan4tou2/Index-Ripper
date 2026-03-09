@@ -53,5 +53,24 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(hasattr(app, "status_label"))
 
 
+    def test_has_filters_container(self):
+        import ui_ctk, importlib
+        importlib.reload(ui_ctk)
+        app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
+        app.window.after(0, app.window.destroy)
+        app.run()
+        self.assertTrue(hasattr(app, "filters_container"))
+
+    def test_add_file_type_filter(self):
+        import ui_ctk, importlib
+        importlib.reload(ui_ctk)
+        app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
+        app._add_file_type_filter(".mp4")
+        app.window.after(0, app.window.destroy)
+        app.run()
+        self.assertIn(".mp4", app.file_types)
+        self.assertIn(".mp4", app.file_type_widgets)
+
+
 if __name__ == "__main__":
     unittest.main()

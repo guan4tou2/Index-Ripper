@@ -246,7 +246,43 @@ class WebsiteCopierCtk:
     # --- Stub methods (implemented in later Tasks) ---
 
     def _build_filters_row(self) -> None:
-        pass
+        self._ctrl_row_frame = ctk.CTkFrame(self.window, fg_color="transparent")
+        self._ctrl_row_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(4, 0))
+        self._ctrl_row_frame.grid_columnconfigure(0, weight=1)
+
+        filters_frame = ctk.CTkFrame(self._ctrl_row_frame, fg_color="transparent")
+        filters_frame.grid(row=0, column=0, sticky="ew")
+
+        self.filters_container = ctk.CTkScrollableFrame(
+            filters_frame,
+            height=70,
+            orientation="horizontal",
+            fg_color="transparent",
+        )
+        self.filters_container.pack(fill="x")
+
+        type_actions = ctk.CTkFrame(filters_frame, fg_color="transparent")
+        type_actions.pack(fill="x", pady=(4, 0))
+
+        ctk.CTkButton(
+            type_actions,
+            text="Select All Types",
+            fg_color=("gray80", "gray25"),
+            text_color=("gray10", "gray90"),
+            hover_color=("gray70", "gray35"),
+            command=self.select_all_types,
+            width=140,
+        ).pack(side="left", padx=(0, 6))
+
+        ctk.CTkButton(
+            type_actions,
+            text="Deselect All Types",
+            fg_color=("gray80", "gray25"),
+            text_color=("gray10", "gray90"),
+            hover_color=("gray70", "gray35"),
+            command=self.deselect_all_types,
+            width=150,
+        ).pack(side="left")
 
     def _build_treeview(self) -> None:
         pass
@@ -317,3 +353,29 @@ class WebsiteCopierCtk:
     def start_scan(self): pass
     def toggle_scan_pause(self): pass
     def clear_scan_results(self): pass
+
+    def select_all_types(self) -> None:
+        for var in self.file_types.values():
+            var.set(True)
+
+    def deselect_all_types(self) -> None:
+        for var in self.file_types.values():
+            var.set(False)
+
+    def _add_file_type_filter(self, ext: str) -> None:
+        if not hasattr(self, "filters_container"):
+            return
+        if ext in self.file_types:
+            return
+        var = tk.BooleanVar(value=True)
+        self.file_types[ext] = var
+        self.file_type_counts[ext] = 0
+        cb = ctk.CTkCheckBox(
+            self.filters_container,
+            text=ext if ext else "(no ext)",
+            variable=var,
+            onvalue=True,
+            offvalue=False,
+        )
+        cb.pack(side="left", padx=4, pady=4)
+        self.file_type_widgets[ext] = cb
