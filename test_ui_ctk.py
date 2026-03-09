@@ -72,5 +72,17 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertIn(".mp4", app.file_type_widgets)
 
 
+    def test_has_download_controls(self):
+        import ui_ctk, importlib
+        importlib.reload(ui_ctk)
+        app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
+        app.window.after(0, app.window.destroy)
+        app.run()
+        self.assertTrue(hasattr(app, "download_btn"))
+        self.assertTrue(hasattr(app, "pause_btn"))
+        self.assertTrue(hasattr(app, "threads_var"))
+        self.assertTrue(hasattr(app, "toggle_panels_btn"))
+
+
 if __name__ == "__main__":
     unittest.main()

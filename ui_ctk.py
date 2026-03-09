@@ -294,7 +294,53 @@ class WebsiteCopierCtk:
         pass
 
     def _build_download_controls(self) -> None:
-        pass
+        controls = ctk.CTkFrame(self._ctrl_row_frame, fg_color="transparent")
+        controls.grid(row=0, column=1, sticky="e", padx=(10, 0))
+
+        self.download_btn = ctk.CTkButton(
+            controls, text="Download Selected", command=self.download_selected
+        )
+        self.download_btn.grid(row=0, column=0, padx=4)
+
+        self.pause_btn = ctk.CTkButton(
+            controls, text="Pause",
+            fg_color=("gray70", "gray30"),
+            hover_color=("gray60", "gray40"),
+            command=self.toggle_pause,
+            state="disabled",
+        )
+        self.pause_btn.grid(row=0, column=1, padx=4)
+
+        self.path_btn = ctk.CTkButton(
+            controls, text="Choose Folder",
+            fg_color=("gray70", "gray30"),
+            hover_color=("gray60", "gray40"),
+            command=self.choose_download_path,
+        )
+        self.path_btn.grid(row=0, column=2, padx=4)
+
+        ctk.CTkLabel(controls, text="Threads").grid(row=0, column=3, padx=(12, 4))
+
+        self.threads_var = tk.StringVar(value="5")
+        self.threads_combo = ctk.CTkOptionMenu(
+            controls,
+            values=[str(i) for i in range(1, 11)],
+            variable=self.threads_var,
+            command=self.update_thread_count,
+            width=70,
+        )
+        self.threads_combo.grid(row=0, column=4)
+
+        self.panels_visible = True
+        self.toggle_panels_btn = ctk.CTkButton(
+            controls, text="Hide Panels",
+            fg_color=("gray80", "gray25"),
+            text_color=("gray10", "gray90"),
+            hover_color=("gray70", "gray35"),
+            command=self.toggle_panels,
+            width=110,
+        )
+        self.toggle_panels_btn.grid(row=0, column=5, padx=(10, 0))
 
     def focus_search(self, event=None) -> None:
         pass
@@ -353,6 +399,32 @@ class WebsiteCopierCtk:
     def start_scan(self): pass
     def toggle_scan_pause(self): pass
     def clear_scan_results(self): pass
+    def download_selected(self): pass
+    def toggle_pause(self): pass
+
+    def choose_download_path(self) -> None:
+        path = filedialog.askdirectory(title="Choose Download Location")
+        if path:
+            self.download_path = path
+
+    def update_thread_count(self, value=None) -> None:
+        try:
+            n = int(self.threads_var.get())
+        except (ValueError, AttributeError):
+            return
+        self.max_workers = max(1, min(10, n))
+
+    def toggle_panels(self) -> None:
+        if self.panels_visible:
+            if hasattr(self, "_panels_widget"):
+                self._panels_widget.grid_remove()
+            self.panels_visible = False
+            self.toggle_panels_btn.configure(text="Show Panels")
+        else:
+            if hasattr(self, "_panels_widget"):
+                self._panels_widget.grid()
+            self.panels_visible = True
+            self.toggle_panels_btn.configure(text="Hide Panels")
 
     def select_all_types(self) -> None:
         for var in self.file_types.values():
