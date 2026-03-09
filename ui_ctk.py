@@ -604,15 +604,24 @@ class WebsiteCopierCtk:
             self.tree.item(item, open=False)
             self.collapse_all(item)
 
-    def sort_tree(self, col):
-        try:
-            items = [(self.tree.set(i, col), i) for i in self.tree.get_children("")]
-            items.sort(reverse=self.sort_reverse)
-            for index, (_, i) in enumerate(items):
-                self.tree.move(i, "", index)
-            self.sort_reverse = not self.sort_reverse
-        except tk.TclError:
-            pass
+    def sort_tree(self, col: str) -> None:
+        def get_key(item_id: str) -> str:
+            if col == "#0":
+                return self._strip_checkmark(self.tree.item(item_id, "text")).lower()
+            return self.tree.set(item_id, col).lower()
+
+        def sort_children(parent: str) -> None:
+            children = list(self.tree.get_children(parent))
+            if not children:
+                return
+            children.sort(key=get_key, reverse=self.sort_reverse)
+            for idx, item in enumerate(children):
+                self.tree.move(item, parent, idx)
+            for item in children:
+                sort_children(item)
+
+        sort_children("")
+        self.sort_reverse = not self.sort_reverse
 
     def on_search_filter_changed(self, *args):
         pass
