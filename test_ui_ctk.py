@@ -101,6 +101,26 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         # search_var should have trace (on_search_filter_changed)
         self.assertTrue(len(app.search_var.trace_info()) > 0)
 
+    def test_has_progress_bar(self):
+        import ui_ctk, importlib
+        importlib.reload(ui_ctk)
+        app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
+        app.window.after(0, app.window.destroy)
+        app.run()
+        self.assertTrue(hasattr(app, "progress_bar"))
+        self.assertTrue(hasattr(app, "progress_label"))
+
+    def test_has_panels_notebook(self):
+        import ui_ctk, importlib
+        importlib.reload(ui_ctk)
+        app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
+        app.window.after(0, app.window.destroy)
+        app.run()
+        self.assertTrue(hasattr(app, "panels_notebook"))
+        self.assertIsNotNone(app.panels_notebook)
+        self.assertTrue(hasattr(app, "log_text"))
+        self.assertTrue(hasattr(app, "downloads_panel"))
+
 
 if __name__ == "__main__":
     unittest.main()

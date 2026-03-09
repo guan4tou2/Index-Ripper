@@ -2,7 +2,7 @@ import threading
 
 
 class DownloadsPanel:
-    def __init__(self, parent_frame, ctk, tk, threading_module=None):
+    def __init__(self, parent_frame, ctk, tk, threading_module=None, tokens=None):
         self.parent_frame = parent_frame
         self.ctk = ctk
         self.tk = tk

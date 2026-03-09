@@ -341,10 +341,39 @@ class WebsiteCopierCtk:
         self.tree.bind("<Return>", self.on_tree_enter)
 
     def _build_progress_section(self) -> None:
-        pass
+        progress_frame = ctk.CTkFrame(self.window, fg_color="transparent")
+        progress_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=(4, 0))
+        progress_frame.grid_columnconfigure(0, weight=1)
+
+        self.progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.progress_bar.set(0)
+        self.progress_bar.grid(row=0, column=0, sticky="ew")
+
+        self.progress_label = ctk.CTkLabel(progress_frame, text="")
+        self.progress_label.grid(row=1, column=0, sticky="w")
 
     def _build_panels(self) -> None:
-        pass
+        self.panels_notebook = ctk.CTkTabview(self.window, height=180)
+        self.panels_notebook.grid(row=4, column=0, sticky="ew", padx=10, pady=(4, 10))
+        self._panels_widget = self.panels_notebook  # toggle_panels 用
+
+        downloads_tab = self.panels_notebook.add("Downloads")
+        logs_tab = self.panels_notebook.add("Logs")
+        self.panels_notebook.set("Logs")  # 預設顯示 Logs
+
+        # Downloads tab：可捲動容器 + DownloadsPanel
+        downloads_scroll = ctk.CTkScrollableFrame(downloads_tab, height=120)
+        downloads_scroll.pack(fill="both", expand=True)
+        self.downloads_panel = DownloadsPanel(
+            parent_frame=downloads_scroll,
+            ctk=ctk,
+            tk=tk,
+            tokens=self.ui_tokens,
+        )
+
+        # Logs tab：CTkTextbox
+        self.log_text = ctk.CTkTextbox(logs_tab, height=120, wrap="word")
+        self.log_text.pack(fill="both", expand=True)
 
     def _build_download_controls(self) -> None:
         controls = ctk.CTkFrame(self._ctrl_row_frame, fg_color="transparent")
