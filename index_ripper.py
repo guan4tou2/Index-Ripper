@@ -23,6 +23,25 @@ if "--self-test" in sys.argv:
     )
     raise SystemExit(0)
 
+
+def _configure_tk_libraries() -> None:
+    """Set Tcl/Tk library env vars for uv-managed Python when missing."""
+    if os.environ.get("TCL_LIBRARY") and os.environ.get("TK_LIBRARY"):
+        return
+    for prefix in (sys.base_prefix, sys.prefix):
+        lib_root = os.path.join(prefix, "lib")
+        tcl_library = os.path.join(lib_root, "tcl8.6")
+        tk_library = os.path.join(lib_root, "tk8.6")
+        if os.path.isfile(os.path.join(tcl_library, "init.tcl")) and os.path.isfile(
+            os.path.join(tk_library, "tk.tcl")
+        ):
+            os.environ.setdefault("TCL_LIBRARY", tcl_library)
+            os.environ.setdefault("TK_LIBRARY", tk_library)
+            return
+
+
+_configure_tk_libraries()
+
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
