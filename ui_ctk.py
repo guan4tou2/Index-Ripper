@@ -128,7 +128,77 @@ class WebsiteCopierCtk:
         self.logs_tab = None
 
     def _build_full_ui(self) -> None:
-        pass
+        self.window.grid_columnconfigure(0, weight=1)
+        self.window.grid_rowconfigure(2, weight=1)
+
+        self._build_header()
+        self._build_filters_row()
+        self._build_treeview()
+        self._build_progress_section()
+        self._build_panels()
+        self._build_download_controls()
+
+        self.sort_reverse = False
+        self.full_tree_backup = {}
+        self.drag_anchor_item = ""
+
+        self.context_menu = tk.Menu(self.window, tearoff=0)
+        self.context_menu.add_command(label="Select All", command=self.select_all)
+        self.context_menu.add_command(label="Deselect All", command=self.deselect_all)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Expand All", command=self.expand_all)
+        self.context_menu.add_command(label="Collapse All", command=self.collapse_all)
+
+    def _build_header(self) -> None:
+        header = ctk.CTkFrame(self.window, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        header.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(header, text="URL", font=ctk.CTkFont(weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=(0, 8)
+        )
+
+        self.url_var = tk.StringVar()
+        self.url_entry = ctk.CTkEntry(header, textvariable=self.url_var, placeholder_text="https://")
+        self.url_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+
+        self.status_label = ctk.CTkLabel(header, text="Ready", text_color="#059669")
+        self.status_label.grid(row=0, column=2, sticky="e", padx=(0, 8))
+
+        actions = ctk.CTkFrame(header, fg_color="transparent")
+        actions.grid(row=0, column=3, sticky="e")
+
+        self.scan_btn = ctk.CTkButton(actions, text="Scan", command=self.start_scan)
+        self.scan_btn.pack(side="left", padx=3)
+
+        self.scan_pause_btn = ctk.CTkButton(
+            actions, text="Pause Scan",
+            fg_color=("gray70", "gray30"),
+            hover_color=("gray60", "gray40"),
+            command=self.toggle_scan_pause,
+            state="disabled",
+        )
+        self.scan_pause_btn.pack(side="left", padx=3)
+
+        self.clear_scan_btn = ctk.CTkButton(
+            actions, text="Clear",
+            fg_color=("gray70", "gray30"),
+            hover_color=("gray60", "gray40"),
+            command=self.clear_scan_results,
+        )
+        self.clear_scan_btn.pack(side="left", padx=3)
+
+        # URL context menu
+        self.url_context_menu = tk.Menu(self.window, tearoff=0)
+        self.url_context_menu.add_command(label="Paste", command=self._paste_into_url_entry)
+
+        self.url_entry.bind("<Command-v>", self._on_url_paste)
+        self.url_entry.bind("<Command-V>", self._on_url_paste)
+        self.url_entry.bind("<Control-v>", self._on_url_paste)
+        self.url_entry.bind("<Control-V>", self._on_url_paste)
+        self.url_entry.bind("<Shift-Insert>", self._on_url_paste)
+        self.url_entry.bind("<Button-2>", self._show_url_context_menu)
+        self.url_entry.bind("<Button-3>", self._show_url_context_menu)
 
     def run(self) -> None:
         self.window.mainloop()
@@ -199,5 +269,50 @@ class WebsiteCopierCtk:
     def clear_search(self, event=None) -> None:
         pass
 
-    def _on_global_url_paste(self, event=None) -> None:
-        pass
+    def _on_url_paste(self, _event=None):
+        self._paste_into_url_entry()
+        return "break"
+
+    def _on_global_url_paste(self, _event=None):
+        try:
+            focused = self.window.focus_get()
+        except tk.TclError:
+            return None
+        # CTkEntry 的實際 tk.Entry widget 在 self.url_entry._entry
+        try:
+            if focused is self.url_entry._entry:
+                self._paste_into_url_entry()
+                return "break"
+        except AttributeError:
+            pass
+        return None
+
+    def _paste_into_url_entry(self):
+        try:
+            text = self.window.clipboard_get()
+        except tk.TclError:
+            return
+        if not text:
+            return
+        self.url_entry.delete(0, "end")
+        self.url_entry.insert(0, text)
+
+    def _show_url_context_menu(self, event):
+        try:
+            self.url_context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.url_context_menu.grab_release()
+
+    def _set_status(self, text: str, color: str = "#059669") -> None:
+        try:
+            self.status_label.configure(text=text, text_color=color)
+        except Exception:
+            pass
+
+    def select_all(self): pass
+    def deselect_all(self): pass
+    def expand_all(self): pass
+    def collapse_all(self): pass
+    def start_scan(self): pass
+    def toggle_scan_pause(self): pass
+    def clear_scan_results(self): pass

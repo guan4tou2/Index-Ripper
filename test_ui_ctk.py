@@ -42,6 +42,16 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         app.run()
         self.assertTrue(hasattr(app, "log_text"))
 
+    def test_full_ui_has_scan_btn(self):
+        import ui_ctk, importlib
+        importlib.reload(ui_ctk)
+        app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
+        app.window.after(0, app.window.destroy)
+        app.run()
+        self.assertTrue(hasattr(app, "scan_btn"))
+        self.assertTrue(hasattr(app, "url_entry"))
+        self.assertTrue(hasattr(app, "status_label"))
+
 
 if __name__ == "__main__":
     unittest.main()
