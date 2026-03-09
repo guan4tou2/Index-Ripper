@@ -65,7 +65,6 @@ from settings_store import load_settings, save_settings
 from ui_theme import (
     action_button_style_name,
     apply_app_theme,
-    apply_bootstrap_theme,
     configure_action_button_styles,
     configure_treeview_style,
     treeview_tag_colors,
@@ -90,7 +89,6 @@ class WebsiteCopier:
         self.window.title("Index Ripper")
         self.window.geometry("1200x900")
         self.window.minsize(900, 650)
-        apply_bootstrap_theme("flatly")
         configure_action_button_styles(self.window, ctk, ttk)
         self.ui_tokens = ui_tokens()
 
