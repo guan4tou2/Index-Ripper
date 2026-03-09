@@ -967,32 +967,51 @@ class WebsiteCopierCtk:
 
         os.makedirs(self.download_path, exist_ok=True)
 
-        selected = []
+        # Step 1: Collect candidate full_paths from the treeview without holding
+        # files_dict_lock, since treeview operations must happen on the UI thread
+        # and should not be interleaved with background lock-holding work.
+        checked_paths: list[str] = []
+        for item_id in self._all_tree_items():
+            try:
+                tags = self.tree.item(item_id, "tags")
+            except tk.TclError:
+                continue
+            if "checked" in tags and "file" in tags:
+                full_path = self.tree.set(item_id, "full_path")
+                if full_path:
+                    checked_paths.append(full_path)
+
+        # Fall back to treeview selection when nothing is checked.
+        if not checked_paths:
+            for item_id in list(self.tree.selection()):
+                try:
+                    tags = self.tree.item(item_id, "tags")
+                except tk.TclError:
+                    continue
+                if "file" not in tags:
+                    continue
+                full_path = self.tree.set(item_id, "full_path")
+                if full_path:
+                    checked_paths.append(full_path)
+
+        if not checked_paths:
+            self.notify_info("Info", "No selected files to download")
+            return
+
+        # Step 2: Hold lock only for the brief dict look-ups; copy info so the
+        # lock is released before any further work.
+        selected: list[tuple[str, dict]] = []
         with self.files_dict_lock:
-            for full_path in sorted(self.checked_items):
+            for full_path in checked_paths:
                 info = self.files_dict.get(full_path)
                 if info:
-                    selected.append((full_path, info))
-            if not selected:
-                selected_item_ids = list(self.tree.selection())
-                for item_id in selected_item_ids:
-                    try:
-                        tags = self.tree.item(item_id, "tags")
-                    except tk.TclError:
-                        continue
-                    if "file" not in tags:
-                        continue
-                    full_path = self.tree.set(item_id, "full_path")
-                    if not full_path:
-                        continue
-                    info = self.files_dict.get(full_path)
-                    if info:
-                        selected.append((full_path, info))
+                    selected.append((full_path, dict(info)))
 
         if not selected:
             self.notify_info("Info", "No selected files to download")
             return
 
+        # Step 3: Submit download tasks without holding the lock.
         self.pause_btn.configure(state="normal")
         futures = []
         for full_path, info in selected:
@@ -1018,6 +1037,7 @@ class WebsiteCopierCtk:
         else:
             self.pause_event.set()
             self.pause_btn.configure(text="Pause")
+            self.progress_label.configure(text="")
 
     def _update_download_progress(self, file_path: str, progress: float) -> None:
         self.downloads_panel.set_progress(file_path, progress)
@@ -1052,10 +1072,16 @@ class WebsiteCopierCtk:
                 "tags": self.tree.item(item, "tags"),
                 "open": self.tree.item(item, "open"),
             }
+        # Snapshot folders so _restore_full_tree can rebuild the mapping.
+        with self.folders_dict_lock:
+            self._folders_backup = dict(self.folders)
 
     def _restore_full_tree(self) -> None:
         backup = dict(self.full_tree_backup)
         self.full_tree_backup.clear()
+        folders_snapshot = getattr(self, "_folders_backup", {})
+        self._folders_backup = {}
+
         for item in self.tree.get_children(""):
             self.tree.delete(item)
         with self.folders_dict_lock:
@@ -1069,6 +1095,13 @@ class WebsiteCopierCtk:
             new_id = self.tree.insert(parent_new, "end", text=data["text"], values=data["values"], tags=data["tags"])
             self.tree.item(new_id, open=data["open"])
             id_map[old_id] = new_id
+
+        # Rebuild self.folders by remapping old item IDs → new item IDs.
+        with self.folders_dict_lock:
+            for folder_path, old_id in folders_snapshot.items():
+                new_id = id_map.get(old_id)
+                if new_id:
+                    self.folders[folder_path] = new_id
 
     def _filter_tree_by_term(self, term: str) -> None:
         for item in self._all_tree_items():
