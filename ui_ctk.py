@@ -518,13 +518,22 @@ class WebsiteCopierCtk:
         self.toggle_panels_btn.grid(row=0, column=5, padx=(10, 0))
 
     def focus_search(self, event=None) -> None:
-        pass
+        try:
+            self.search_entry.focus_set()
+        except tk.TclError:
+            pass
 
     def focus_logs(self, event=None) -> None:
-        pass
+        try:
+            if hasattr(self, "panels_notebook") and self.panels_notebook is not None:
+                self.panels_notebook.set("Logs")
+            self.log_text.focus_set()
+        except (AttributeError, tk.TclError):
+            pass
 
     def clear_search(self, event=None) -> None:
-        pass
+        if hasattr(self, "search_var"):
+            self.search_var.set("")
 
     def _on_url_paste(self, _event=None):
         self._paste_into_url_entry()
@@ -745,23 +754,331 @@ class WebsiteCopierCtk:
         sort_children("")
         self.sort_reverse = not self.sort_reverse
 
-    def on_search_filter_changed(self, *args):
-        pass
+    # --- Status color mapping ---
 
-    def start_scan(self): pass
-    def toggle_scan_pause(self): pass
-    def clear_scan_results(self): pass
-    def download_selected(self): pass
-    def toggle_pause(self): pass
+    _STATUS_COLORS = {
+        "success": "#059669",
+        "danger": "#DC2626",
+        "warning": "#B45309",
+        "secondary": "#64748B",
+        "info": "#0284C7",
+    }
 
-    # Stubs for Task 10 (backend bridge)
+    # --- Backend bridge: scan ---
+
+    def _run_on_ui_thread(self, callback, *args, wait: bool = False):
+        if not wait:
+            self.window.after(0, lambda: callback(*args))
+            return
+        done = threading.Event()
+        error_box = {}
+
+        def wrapped():
+            try:
+                callback(*args)
+            except Exception as ex:
+                error_box["error"] = ex
+            finally:
+                done.set()
+
+        self.window.after(0, wrapped)
+        done.wait()
+        if "error" in error_box:
+            raise error_box["error"]
+
+    def start_scan(self) -> None:
+        url = self.url_var.get().strip()
+        if self.is_scanning:
+            self.backend.should_stop = True
+            self._set_status("Stopping", "#B45309")
+            return
+        if not url:
+            self.notify_error("Error", "Please enter a URL")
+            return
+
+        self.backend.should_stop = False
+        self.search_var.set("")
+        self.full_tree_backup.clear()
+        try:
+            self.download_path = default_download_folder(url, os.getcwd())
+        except Exception:
+            self.download_path = os.path.join(os.getcwd(), "downloads")
+
+        t = threading.Thread(target=self.backend.scan_website, args=(url,), daemon=True)
+        t.start()
+
+    def toggle_scan_pause(self) -> None:
+        if self.scan_pause_event.is_set():
+            self.scan_pause_event.clear()
+            self.scan_pause_btn.configure(text="Resume Scan", state="normal")
+            self._set_status("Scan Paused", "#B45309")
+        else:
+            self.scan_pause_event.set()
+            self.scan_pause_btn.configure(text="Pause Scan", state="normal")
+            self._set_status("Scanning", "#0284C7")
+
+    def clear_scan_results(self) -> None:
+        if self.is_scanning:
+            return
+        for item in self.tree.get_children(""):
+            self.tree.delete(item)
+        with self.files_dict_lock:
+            self.files_dict.clear()
+        with self.folders_dict_lock:
+            self.folders.clear()
+        if hasattr(self, "filters_container"):
+            for widget in self.filters_container.winfo_children():
+                widget.destroy()
+        self.file_types.clear()
+        self.file_type_counts.clear()
+        self.file_type_widgets.clear()
+        self.checked_items.clear()
+        self.progress_bar.set(0)
+        self.progress_label.configure(text="")
+        self._set_status("Ready", "#059669")
+
+    def update_progress(self, scanned: int, total: int) -> None:
+        """Update the scan progress bar (0–100%)."""
+        if total <= 0:
+            self.progress_bar.set(0)
+            return
+        pct = (scanned / total) * 100
+        self.progress_bar.set(pct / 100)
+        self.progress_label.configure(text=f"Scan: {scanned}/{total}")
+
     def add_folder(self, dir_path: str, url: str) -> str:
-        """Stub: create folder node in treeview (Task 10)."""
-        return ""
+        """Create folder nodes in the treeview for the given path."""
+        if not dir_path:
+            dir_path = "/"
+        parts = [p for p in dir_path.split("/") if p]
+
+        current = ""
+        parent_id = ""
+        for part in parts:
+            current = current + "/" + part
+            with self.folders_dict_lock:
+                existing = self.folders.get(current)
+            if existing:
+                parent_id = existing
+                continue
+
+            node_id = self.tree.insert(
+                parent_id,
+                "end",
+                text=f"📁 {part}",
+                values=("", "dir", ""),
+                tags=("folder",),
+                open=True,
+            )
+            with self.folders_dict_lock:
+                self.folders[current] = node_id
+            parent_id = node_id
+
+        return parent_id
 
     def add_file(self, dir_path: str, url: str, file_name: str, size, file_type: str, full_path: str) -> None:
-        """Stub: add file row to treeview (Task 10)."""
-        pass
+        """Add a file row to the treeview."""
+        if not file_name:
+            return
+        is_html_dir_like = (
+            isinstance(file_type, str)
+            and "text/html" in file_type.lower()
+            and "." not in (file_name or "")
+        )
+        parent_id = self.add_folder(dir_path, url)
+        with self.files_dict_lock:
+            existing_entry = self.files_dict.get(full_path)
+            if should_skip_file_row(existing_entry):
+                return
+            if is_html_dir_like:
+                self.files_dict.pop(full_path, None)
+            else:
+                self.files_dict[full_path] = {
+                    "url": url,
+                    "file_name": file_name,
+                    "size": size,
+                    "file_type": file_type,
+                    "path": dir_path,
+                }
+
+        if is_html_dir_like:
+            folder_path = f"{dir_path.rstrip('/')}/{file_name}".replace("//", "/")
+            self.add_folder(folder_path, url)
+            return
+
+        ext = normalize_extension(file_name)
+        self._add_file_type_filter(ext)
+        var = self.file_types.get(ext)
+        if var is not None and not var.get():
+            return
+        icon, group = self._file_icon_and_group(file_name, file_type)
+        display_type = group if not file_type else f"{group} | {file_type}"
+
+        node_id = self.tree.insert(
+            parent_id,
+            "end",
+            text=f"{icon} {file_name}",
+            values=(size or "", display_type, full_path or ""),
+            tags=("file", ext),
+        )
+        if full_path and full_path in self.checked_items:
+            self._set_item_checked_visual(node_id, True)
+            tags = list(self.tree.item(node_id, "tags"))
+            if "checked" not in tags:
+                tags.append("checked")
+                self.tree.item(node_id, tags=tuple(tags))
+
+    def _file_icon_and_group(self, file_name: str, file_type: str | None):
+        ext = normalize_extension(file_name)
+        mime = (file_type or "").lower()
+        if ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".ico"):
+            return "🖼", "image"
+        if ext in (".md", ".txt", ".pdf", ".doc", ".docx", ".rtf"):
+            return "📄", "document"
+        if ext in (".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz"):
+            return "🗜", "archive"
+        if ext in (
+            ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".c", ".cpp",
+            ".h", ".hpp", ".json", ".yaml", ".yml", ".toml", ".xml", ".html", ".css", ".sh",
+        ):
+            return "💻", "code"
+        if "text/" in mime:
+            return "📄", "text"
+        if "image/" in mime:
+            return "🖼", "image"
+        if "audio/" in mime:
+            return "🎵", "audio"
+        if "video/" in mime:
+            return "🎬", "video"
+        return "📦", "binary"
+
+    # --- Backend bridge: downloads ---
+
+    def download_selected(self) -> None:
+        if not self.download_path:
+            url = self.url_var.get().strip()
+            if url:
+                try:
+                    self.download_path = default_download_folder(url, os.getcwd())
+                except Exception:
+                    self.download_path = os.path.join(os.getcwd(), "downloads")
+            else:
+                self.download_path = os.path.join(os.getcwd(), "downloads")
+
+        os.makedirs(self.download_path, exist_ok=True)
+
+        selected = []
+        with self.files_dict_lock:
+            for full_path in sorted(self.checked_items):
+                info = self.files_dict.get(full_path)
+                if info:
+                    selected.append((full_path, info))
+            if not selected:
+                selected_item_ids = list(self.tree.selection())
+                for item_id in selected_item_ids:
+                    try:
+                        tags = self.tree.item(item_id, "tags")
+                    except tk.TclError:
+                        continue
+                    if "file" not in tags:
+                        continue
+                    full_path = self.tree.set(item_id, "full_path")
+                    if not full_path:
+                        continue
+                    info = self.files_dict.get(full_path)
+                    if info:
+                        selected.append((full_path, info))
+
+        if not selected:
+            self.notify_info("Info", "No selected files to download")
+            return
+
+        self.pause_btn.configure(state="normal")
+        futures = []
+        for full_path, info in selected:
+            url = info.get("url")
+            file_name = info.get("file_name")
+            if not url or not file_name:
+                continue
+
+            safe_name = sanitize_filename(file_name)
+            file_path = safe_join(self.download_path, [safe_name])
+
+            cancel_event = self.downloads_panel.ensure(file_path, safe_name)
+            futures.append(self.executor.submit(self.backend.download_file, url, file_path, safe_name, cancel_event))
+
+        monitor = threading.Thread(target=self.backend.monitor_downloads, args=(futures,), daemon=True)
+        monitor.start()
+
+    def toggle_pause(self) -> None:
+        if self.pause_event.is_set():
+            self.pause_event.clear()
+            self.pause_btn.configure(text="Resume")
+            self.progress_label.configure(text="Downloads paused")
+        else:
+            self.pause_event.set()
+            self.pause_btn.configure(text="Pause")
+
+    def _update_download_progress(self, file_path: str, progress: float) -> None:
+        self.downloads_panel.set_progress(file_path, progress)
+
+    def _set_download_status(self, file_path: str, text: str) -> None:
+        self.downloads_panel.set_status(file_path, text)
+
+    # --- Backend bridge: search ---
+
+    def on_search_filter_changed(self, *args):
+        query = self.search_var.get() if hasattr(self, "search_var") else ""
+        self._apply_search_filter(query)
+
+    def _apply_search_filter(self, query: str) -> None:
+        term = (query or "").strip().lower()
+        if not term:
+            if self.full_tree_backup:
+                self._restore_full_tree()
+            return
+        if not self.full_tree_backup:
+            self._backup_full_tree()
+        self._filter_tree_by_term(term)
+
+    def _backup_full_tree(self) -> None:
+        self.full_tree_backup.clear()
+        for item in self._all_tree_items():
+            self.full_tree_backup[item] = {
+                "parent": self.tree.parent(item),
+                "index": self.tree.index(item),
+                "text": self.tree.item(item, "text"),
+                "values": self.tree.item(item, "values"),
+                "tags": self.tree.item(item, "tags"),
+                "open": self.tree.item(item, "open"),
+            }
+
+    def _restore_full_tree(self) -> None:
+        backup = dict(self.full_tree_backup)
+        self.full_tree_backup.clear()
+        for item in self.tree.get_children(""):
+            self.tree.delete(item)
+        with self.folders_dict_lock:
+            self.folders.clear()
+
+        items_sorted = sorted(backup.items(), key=lambda kv: (kv[1]["parent"], kv[1]["index"]))
+        id_map = {}
+        for old_id, data in items_sorted:
+            parent_old = data["parent"]
+            parent_new = id_map.get(parent_old, "") if parent_old else ""
+            new_id = self.tree.insert(parent_new, "end", text=data["text"], values=data["values"], tags=data["tags"])
+            self.tree.item(new_id, open=data["open"])
+            id_map[old_id] = new_id
+
+    def _filter_tree_by_term(self, term: str) -> None:
+        for item in self._all_tree_items():
+            text = (self.tree.item(item, "text") or "").lower()
+            if term in text:
+                continue
+            try:
+                self.tree.detach(item)
+            except tk.TclError:
+                pass
 
     def choose_download_path(self) -> None:
         path = filedialog.askdirectory(title="Choose Download Location")

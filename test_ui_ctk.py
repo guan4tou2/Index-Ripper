@@ -132,6 +132,15 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         app.window.after(0, app.window.destroy)
         app.run()
 
+    def test_scan_methods_exist(self):
+        import ui_ctk
+        for method in ("start_scan", "toggle_scan_pause", "clear_scan_results",
+                       "add_folder", "add_file", "update_progress",
+                       "download_selected", "toggle_pause",
+                       "on_search_filter_changed", "_apply_search_filter",
+                       "focus_search", "focus_logs", "clear_search"):
+            self.assertTrue(hasattr(ui_ctk.WebsiteCopierCtk, method), f"Missing: {method}")
+
 
 if __name__ == "__main__":
     unittest.main()
