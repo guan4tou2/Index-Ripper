@@ -274,11 +274,12 @@ class WebsiteCopierCtk:
         return "break"
 
     def _on_global_url_paste(self, _event=None):
+        if not hasattr(self, "url_entry"):
+            return None
         try:
             focused = self.window.focus_get()
         except tk.TclError:
             return None
-        # CTkEntry 的實際 tk.Entry widget 在 self.url_entry._entry
         try:
             if focused is self.url_entry._entry:
                 self._paste_into_url_entry()
