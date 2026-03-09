@@ -1301,19 +1301,13 @@ class WebsiteCopier:
 
 if __name__ == "__main__":
     if "--ui-smoke" in sys.argv:
-        app = WebsiteCopier()
-        try:
-            for _ in range(3):
-                app.window.update_idletasks()
-                app.window.update()
-            app.window.destroy()
-        except Exception:
-            try:
-                app.window.destroy()
-            except Exception:
-                pass
+        from ui_ctk import WebsiteCopierCtk
+        app = WebsiteCopierCtk(ui_smoke=True)
+        app.window.after(0, app.window.destroy)
+        app.run()
         print("UI_SMOKE_OK")
         raise SystemExit(0)
 
-    app = WebsiteCopier()
+    from ui_ctk import WebsiteCopierCtk
+    app = WebsiteCopierCtk()
     app.run()
