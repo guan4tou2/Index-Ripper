@@ -32,15 +32,15 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
 
     def test_has_url_var(self):
         app = self._make_smoke()
-        self.assertTrue(hasattr(app, "url_var"))
         app.window.after(0, app.window.destroy)
         app.run()
+        self.assertTrue(hasattr(app, "url_var"))
 
     def test_has_log_text(self):
         app = self._make_smoke()
-        self.assertTrue(hasattr(app, "log_text"))
         app.window.after(0, app.window.destroy)
         app.run()
+        self.assertTrue(hasattr(app, "log_text"))
 
 
 if __name__ == "__main__":

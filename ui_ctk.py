@@ -20,6 +20,8 @@ from ui_downloads import DownloadsPanel
 from ui_theme import (
     apply_app_theme,
     configure_action_button_styles,
+    configure_treeview_style,
+    treeview_tag_colors,
     ui_tokens,
 )
 
