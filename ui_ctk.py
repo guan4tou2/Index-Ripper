@@ -101,6 +101,10 @@ class WebsiteCopierCtk:
 
         self._build_ui()
 
+        if not self._ui_smoke:
+            self.window.after(100, self._poll_scan_queue)
+            self.window.after(100, self._poll_file_queue)
+
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         if not self._ui_smoke:
             self.window.bind("<Control-f>", self.focus_search)
@@ -242,6 +246,96 @@ class WebsiteCopierCtk:
             messagebox.showerror(title, message)
         else:
             self.log_message(f"[ERROR] {title}: {message}")
+
+    # --- Queue polling (thread-safe) ---
+
+    def _schedule_flush(self) -> None:
+        """Schedule a deferred flush of scan_item_buffer if not already pending."""
+        if self.scan_flush_job is not None:
+            return
+        if not self.is_scanning and self.scan_item_buffer.empty():
+            return
+        self.scan_flush_job = self.window.after(
+            self.scan_flush_interval_ms, self._flush_scan_buffer
+        )
+
+    def _flush_scan_buffer(self, max_items: int | None = None, reschedule: bool = True) -> None:
+        """Drain scan_item_buffer in batches and dispatch to dir/file queues."""
+        self.scan_flush_job = None
+        if max_items is None:
+            max_items = self.scan_flush_batch_size
+
+        processed = 0
+        added_dir = False
+        added_file = False
+
+        while processed < max_items:
+            try:
+                (
+                    is_directory,
+                    path,
+                    url,
+                    file_name,
+                    size,
+                    file_type,
+                    full_path,
+                ) = self.scan_item_buffer.get_nowait()
+            except Empty:
+                break
+
+            if is_directory:
+                with self.folders_dict_lock:
+                    self.dir_queue.put((path, url))
+                added_dir = True
+            else:
+                self.file_queue.put((path, url, file_name, size, file_type, full_path))
+                added_file = True
+            processed += 1
+
+        if added_dir and not self.is_processing_dirs:
+            self.window.after(0, self._poll_scan_queue)
+        if added_file and not self.is_processing_files:
+            self.window.after(0, self._poll_file_queue)
+
+        if reschedule and not self.scan_item_buffer.empty():
+            self._schedule_flush()
+
+    def _poll_scan_queue(self) -> None:
+        """Process one item from dir_queue and reschedule until empty."""
+        try:
+            self.is_processing_dirs = True
+            if not self.dir_queue.empty():
+                dir_path, url = self.dir_queue.get()
+                self.add_folder(dir_path, url)
+                self.window.after(10, self._poll_scan_queue)
+            else:
+                self.is_processing_dirs = False
+        except tk.TclError:
+            self.is_processing_dirs = False
+
+    def _poll_file_queue(self) -> None:
+        """Process one item from file_queue and reschedule until empty."""
+        try:
+            self.is_processing_files = True
+            qsize = self.file_queue.qsize()
+            if qsize != self._last_logged_queue_size and (qsize <= 5 or qsize % 100 == 0):
+                self._debug(f"_poll_file_queue queue_size={qsize}")
+                self._last_logged_queue_size = qsize
+            if not self.file_queue.empty():
+                (
+                    dir_path,
+                    url,
+                    file_name,
+                    size,
+                    file_type,
+                    full_path,
+                ) = self.file_queue.get()
+                self.add_file(dir_path, url, file_name, size, file_type, full_path)
+                self.window.after(5, self._poll_file_queue)
+            else:
+                self.is_processing_files = False
+        except tk.TclError:
+            self.is_processing_files = False
 
     # --- Stub methods (implemented in later Tasks) ---
 
@@ -660,6 +754,15 @@ class WebsiteCopierCtk:
     def clear_scan_results(self): pass
     def download_selected(self): pass
     def toggle_pause(self): pass
+
+    # Stubs for Task 10 (backend bridge)
+    def add_folder(self, dir_path: str, url: str) -> str:
+        """Stub: create folder node in treeview (Task 10)."""
+        return ""
+
+    def add_file(self, dir_path: str, url: str, file_name: str, size, file_type: str, full_path: str) -> None:
+        """Stub: add file row to treeview (Task 10)."""
+        pass
 
     def choose_download_path(self) -> None:
         path = filedialog.askdirectory(title="Choose Download Location")

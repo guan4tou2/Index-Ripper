@@ -122,5 +122,16 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(hasattr(app, "downloads_panel"))
 
 
+    def test_poll_methods_exist(self):
+        import ui_ctk, importlib
+        importlib.reload(ui_ctk)
+        app = ui_ctk.WebsiteCopierCtk(ui_smoke=True)
+        for method in ("_poll_scan_queue", "_poll_file_queue",
+                       "_flush_scan_buffer", "_schedule_flush"):
+            self.assertTrue(hasattr(app, method), f"Missing: {method}")
+        app.window.after(0, app.window.destroy)
+        app.run()
+
+
 if __name__ == "__main__":
     unittest.main()
