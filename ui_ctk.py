@@ -284,8 +284,7 @@ class WebsiteCopierCtk:
                 break
 
             if is_directory:
-                with self.folders_dict_lock:
-                    self.dir_queue.put((path, url))
+                self.dir_queue.put((path, url))
                 added_dir = True
             else:
                 self.file_queue.put((path, url, file_name, size, file_type, full_path))
