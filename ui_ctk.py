@@ -25,6 +25,23 @@ from ui_theme import (
     ui_tokens,
 )
 
+from dataclasses import dataclass, field
+
+@dataclass
+class TreeNode:
+    node_id: str
+    parent_id: str        # "" for root-level nodes
+    name: str
+    kind: str             # "folder" | "file"
+    full_path: str        # "" for folders
+    size: str
+    file_type: str
+    icon_group: str       # "folder"|"image"|"document"|"archive"|"code"|"audio"|"video"|"text"|"binary"
+    checked: bool = False
+    expanded: bool = False
+    hidden: bool = False  # True when filtered out by search
+    children: list = field(default_factory=list)  # ordered list of child node_ids
+
 
 def should_skip_file_row(existing_entry) -> bool:
     """Return True when a file row is already fully registered."""
@@ -67,6 +84,11 @@ class WebsiteCopierCtk:
         self.folders: dict[str, str] = {}
         self.checked_items: set[str] = set()
         self.checkbox_checked = "✔ "
+
+        # FileTree data model
+        self.tree_nodes: dict[str, TreeNode] = {}
+        self.tree_roots: list[str] = []           # top-level node_ids in insertion order
+        self._node_counter: int = 0              # monotonic counter for unique node_ids
 
         self.dir_queue = Queue()
         self.file_queue = Queue()
