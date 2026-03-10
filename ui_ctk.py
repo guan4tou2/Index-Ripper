@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import os
 import threading
 import time
@@ -1230,56 +1231,60 @@ class WebsiteCopierCtk:
         self._filter_tree_by_term(term)
 
     def _backup_full_tree(self) -> None:
-        self.full_tree_backup.clear()
-        for item in self._all_tree_items():
-            self.full_tree_backup[item] = {
-                "parent": self.tree.parent(item),
-                "index": self.tree.index(item),
-                "text": self.tree.item(item, "text"),
-                "values": self.tree.item(item, "values"),
-                "tags": self.tree.item(item, "tags"),
-                "open": self.tree.item(item, "open"),
-            }
-        # Snapshot folders so _restore_full_tree can rebuild the mapping.
-        with self.folders_dict_lock:
-            self._folders_backup = dict(self.folders)
+        """Snapshot tree_nodes and tree_roots for search filter restore."""
+        self.full_tree_backup = {
+            "nodes": copy.deepcopy(self.tree_nodes),
+            "roots": list(self.tree_roots),
+            "folders": dict(self.folders),
+        }
 
     def _restore_full_tree(self) -> None:
-        backup = dict(self.full_tree_backup)
-        self.full_tree_backup.clear()
-        folders_snapshot = getattr(self, "_folders_backup", {})
-        self._folders_backup = {}
-
-        for item in self.tree.get_children(""):
-            self.tree.delete(item)
+        """Restore tree_nodes from backup (undo search filter)."""
+        if not self.full_tree_backup:
+            return
+        self.tree_nodes = self.full_tree_backup["nodes"]
+        self.tree_roots = self.full_tree_backup["roots"]
         with self.folders_dict_lock:
-            self.folders.clear()
+            self.folders = self.full_tree_backup["folders"]
+        self.full_tree_backup = {}
 
-        items_sorted = sorted(backup.items(), key=lambda kv: (kv[1]["parent"], kv[1]["index"]))
-        id_map = {}
-        for old_id, data in items_sorted:
-            parent_old = data["parent"]
-            parent_new = id_map.get(parent_old, "") if parent_old else ""
-            new_id = self.tree.insert(parent_new, "end", text=data["text"], values=data["values"], tags=data["tags"])
-            self.tree.item(new_id, open=data["open"])
-            id_map[old_id] = new_id
-
-        # Rebuild self.folders by remapping old item IDs → new item IDs.
-        with self.folders_dict_lock:
-            for folder_path, old_id in folders_snapshot.items():
-                new_id = id_map.get(old_id)
-                if new_id:
-                    self.folders[folder_path] = new_id
+        # Destroy all existing row widgets and rebuild from scratch
+        for row in self._row_widgets.values():
+            row.destroy()
+        self._row_widgets.clear()
+        self._rebuild_visible()
+        self._sync_rows()
 
     def _filter_tree_by_term(self, term: str) -> None:
-        for item in self._all_tree_items():
-            text = (self.tree.item(item, "text") or "").lower()
-            if term in text:
-                continue
-            try:
-                self.tree.detach(item)
-            except tk.TclError:
-                pass
+        """Mark nodes hidden if they (and their descendants) don't match term."""
+        term = term.lower()
+
+        def matches(node_id: str) -> bool:
+            node = self.tree_nodes.get(node_id)
+            if node is None:
+                return False
+            if term in node.name.lower() or term in node.full_path.lower():
+                return True
+            return any(matches(child_id) for child_id in node.children)
+
+        def apply_visibility(node_id: str) -> None:
+            node = self.tree_nodes.get(node_id)
+            if node is None:
+                return
+            if matches(node_id):
+                node.hidden = False
+                if node.kind == "folder":
+                    node.expanded = True  # auto-expand matching folders
+            else:
+                node.hidden = True
+            for child_id in node.children:
+                apply_visibility(child_id)
+
+        for root_id in self.tree_roots:
+            apply_visibility(root_id)
+
+        self._rebuild_visible()
+        self._sync_rows()
 
     def choose_download_path(self) -> None:
         path = filedialog.askdirectory(title="Choose Download Location")
