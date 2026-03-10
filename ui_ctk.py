@@ -225,7 +225,6 @@ class WebsiteCopierCtk:
         self.files_dict: dict[str, dict] = {}
         self.folders: dict[str, str] = {}
         self.checked_items: set[str] = set()
-        self.checkbox_checked = "✔ "
 
         # FileTree data model
         self.tree_nodes: dict[str, TreeNode] = {}
@@ -300,7 +299,6 @@ class WebsiteCopierCtk:
         self.tree_scroll_frame = None
         self.full_tree_backup = {}
         self.sort_reverse = False
-        self.drag_anchor_item = ""
         self._last_toggle_time = 0.0
         self._search_after_id = None
         self.tree_nodes = {}
@@ -321,7 +319,6 @@ class WebsiteCopierCtk:
 
         self.sort_reverse = False
         self.full_tree_backup = {}
-        self.drag_anchor_item = ""
 
         self.context_menu = tk.Menu(self.window, tearoff=0)
         self.context_menu.add_command(label="Select All", command=self.select_all)
@@ -970,12 +967,24 @@ class WebsiteCopierCtk:
     def clear_scan_results(self) -> None:
         if self.is_scanning:
             return
-        for item in self.tree.get_children(""):
-            self.tree.delete(item)
-        with self.files_dict_lock:
-            self.files_dict.clear()
+        self._drain_queues()
+
+        # Clear data model
+        self.tree_nodes.clear()
+        self.tree_roots.clear()
+        self._node_counter = 0
         with self.folders_dict_lock:
             self.folders.clear()
+
+        # Destroy row widgets
+        for row in self._row_widgets.values():
+            row.destroy()
+        self._row_widgets.clear()
+        self._visible_nodes.clear()
+
+        # Clear other state
+        with self.files_dict_lock:
+            self.files_dict.clear()
         if hasattr(self, "filters_container"):
             for widget in self.filters_container.winfo_children():
                 widget.destroy()
@@ -983,6 +992,9 @@ class WebsiteCopierCtk:
         self.file_type_counts.clear()
         self.file_type_widgets.clear()
         self.checked_items.clear()
+        self.full_tree_backup = {}
+        self.scanned_urls = 0
+        self.total_urls = 0
         self.progress_bar.set(0)
         self.progress_label.configure(text="")
         self._set_status("Ready", "#059669")
@@ -1127,63 +1139,21 @@ class WebsiteCopierCtk:
         if not self.download_path:
             url = self.url_var.get().strip()
             if url:
-                try:
-                    self.download_path = default_download_folder(url, os.getcwd())
-                except Exception:
-                    self.download_path = os.path.join(os.getcwd(), "downloads")
-            else:
-                self.download_path = os.path.join(os.getcwd(), "downloads")
+                self.download_path = default_download_folder(url, os.getcwd())
+            if not self.download_path:
+                self.notify_warning("Warning", "Please choose a download location first.")
+                return
 
-        os.makedirs(self.download_path, exist_ok=True)
-
-        # Step 1: Collect candidate full_paths from the treeview without holding
-        # files_dict_lock, since treeview operations must happen on the UI thread
-        # and should not be interleaved with background lock-holding work.
-        checked_paths: list[str] = []
-        for item_id in self._all_tree_items():
-            try:
-                tags = self.tree.item(item_id, "tags")
-            except tk.TclError:
-                continue
-            if "checked" in tags and "file" in tags:
-                full_path = self.tree.set(item_id, "full_path")
-                if full_path:
-                    checked_paths.append(full_path)
-
-        # Fall back to treeview selection when nothing is checked.
-        if not checked_paths:
-            for item_id in list(self.tree.selection()):
-                try:
-                    tags = self.tree.item(item_id, "tags")
-                except tk.TclError:
-                    continue
-                if "file" not in tags:
-                    continue
-                full_path = self.tree.set(item_id, "full_path")
-                if full_path:
-                    checked_paths.append(full_path)
-
-        if not checked_paths:
-            self.notify_info("Info", "No selected files to download")
+        selected_paths = list(self.checked_items)
+        if not selected_paths:
+            self.notify_info("Info", "No files selected for download.")
             return
 
-        # Step 2: Hold lock only for the brief dict look-ups; copy info so the
-        # lock is released before any further work.
-        selected: list[tuple[str, dict]] = []
-        with self.files_dict_lock:
-            for full_path in checked_paths:
-                info = self.files_dict.get(full_path)
-                if info:
-                    selected.append((full_path, dict(info)))
-
-        if not selected:
-            self.notify_info("Info", "No selected files to download")
-            return
-
-        # Step 3: Submit download tasks without holding the lock.
-        self.pause_btn.configure(state="normal")
         futures = []
-        for full_path, info in selected:
+        for full_path in selected_paths:
+            info = self.files_dict.get(full_path)
+            if not info:
+                continue
             url = info.get("url")
             file_name = info.get("file_name")
             if not url or not file_name:
@@ -1195,6 +1165,12 @@ class WebsiteCopierCtk:
             cancel_event = self.downloads_panel.ensure(file_path, safe_name)
             futures.append(self.executor.submit(self.backend.download_file, url, file_path, safe_name, cancel_event))
 
+        if not futures:
+            return
+        try:
+            self.pause_btn.configure(state="normal")
+        except Exception:
+            pass
         monitor = threading.Thread(target=self.backend.monitor_downloads, args=(futures,), daemon=True)
         monitor.start()
 
