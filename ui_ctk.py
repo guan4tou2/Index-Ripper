@@ -1114,7 +1114,7 @@ class WebsiteCopierCtk:
         self._set_status("Scanning", "#B45309")
 
     def on_scan_progress(self, *, scanned_urls: int = 0, total_urls: int = 0) -> None:
-        self.window.after(0, lambda: self.update_progress(scanned_urls, total_urls))
+        self.window.after(0, lambda: self._update_scan_progress(scanned_urls, total_urls))
 
     def on_scan_finished(self, *, stopped: bool = False) -> None:
         def _finish():
@@ -1131,7 +1131,15 @@ class WebsiteCopierCtk:
                 self._set_status("Ready", "#059669")
         self.window.after(0, _finish)
 
-    def update_progress(self, scanned: int, total: int) -> None:
+    def update_progress(self, file_path: str, file_name: str, progress: float) -> None:
+        """Backend hook — called from download thread with per-file progress (0–100)."""
+        self.window.after(0, lambda: self._update_download_progress(file_path, progress))
+
+    def update_download_status(self, file_path: str, status: str) -> None:
+        """Backend hook — called from download thread with file status."""
+        self.window.after(0, lambda: self._set_download_status(file_path, status))
+
+    def _update_scan_progress(self, scanned: int, total: int) -> None:
         """Update the scan progress bar (0–100%)."""
         if total <= 0:
             self.progress_bar.set(0)
