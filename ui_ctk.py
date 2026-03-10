@@ -964,6 +964,21 @@ class WebsiteCopierCtk:
             self.scan_pause_btn.configure(text="Pause Scan", state="normal")
             self._set_status("Scanning", "#0284C7")
 
+    def _drain_queues(self) -> None:
+        """Discard all pending items in scan queues and cancel any scheduled flush."""
+        if self.scan_flush_job is not None:
+            try:
+                self.window.after_cancel(self.scan_flush_job)
+            except Exception:
+                pass
+            self.scan_flush_job = None
+        for q in (self.scan_item_buffer, self.dir_queue, self.file_queue):
+            while True:
+                try:
+                    q.get_nowait()
+                except Exception:
+                    break
+
     def clear_scan_results(self) -> None:
         if self.is_scanning:
             return
@@ -1310,6 +1325,7 @@ class WebsiteCopierCtk:
             offvalue=False,
         )
         cb.pack(side="left", padx=4, pady=4)
+        var.trace_add("write", lambda *_: self._on_type_filter_changed(ext))
         self.file_type_widgets[ext] = cb
 
     def _on_type_filter_changed(self, ext: str) -> None:
