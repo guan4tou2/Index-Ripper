@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from queue import Empty, Queue
@@ -229,6 +230,7 @@ class WebsiteCopierCtk:
         self.tree_nodes: dict[str, TreeNode] = {}
         self.tree_roots: list[str] = []           # top-level node_ids in insertion order
         self._node_counter: int = 0              # monotonic counter for unique node_ids
+        self._last_toggle_time: float = 0.0      # debounce timestamp for row clicks
 
         self.dir_queue = Queue()
         self.file_queue = Queue()
@@ -578,6 +580,85 @@ class WebsiteCopierCtk:
         # Runtime state for view layer
         self._visible_nodes: list[str] = []
         self._row_widgets: dict[str, RowWidget] = {}
+
+    def _rebuild_visible(self) -> None:
+        """Recompute self._visible_nodes from data model (DFS, respects expanded/hidden)."""
+        result: list[str] = []
+
+        def _walk(node_id: str) -> None:
+            node = self.tree_nodes.get(node_id)
+            if node is None or node.hidden:
+                return
+            result.append(node_id)
+            if node.kind == "folder" and node.expanded:
+                for child_id in node.children:
+                    _walk(child_id)
+
+        for root_id in self.tree_roots:
+            _walk(root_id)
+
+        self._visible_nodes = result
+
+    def _sync_rows(self) -> None:
+        """Create/destroy RowWidgets to match _visible_nodes."""
+        if self.tree_scroll_frame is None:
+            return
+
+        new_ids = set(self._visible_nodes)
+        # Remove rows no longer visible
+        for node_id in list(self._row_widgets):
+            if node_id not in new_ids:
+                self._row_widgets.pop(node_id).destroy()
+
+        # Repack all rows in correct order
+        for widget in self.tree_scroll_frame.winfo_children():
+            widget.pack_forget()
+
+        for node_id in self._visible_nodes:
+            node = self.tree_nodes[node_id]
+            depth = self._node_depth(node_id)
+            if node_id not in self._row_widgets:
+                self._row_widgets[node_id] = RowWidget(
+                    self.tree_scroll_frame, self, node, depth
+                )
+            else:
+                self._row_widgets[node_id].frame.pack(fill="x", padx=4, pady=1)
+
+    def _node_depth(self, node_id: str) -> int:
+        depth = 0
+        node = self.tree_nodes.get(node_id)
+        while node and node.parent_id:
+            depth += 1
+            node = self.tree_nodes.get(node.parent_id)
+        return depth
+
+    def _next_node_id(self) -> str:
+        self._node_counter += 1
+        return f"n{self._node_counter}"
+
+    def _on_row_click(self, node_id: str, event=None) -> None:
+        now = time.monotonic()
+        if now - self._last_toggle_time < 0.25:
+            return
+        self._last_toggle_time = now
+        node = self.tree_nodes.get(node_id)
+        if node is None:
+            return
+        if node.kind == "folder":
+            self._on_chevron_click(node_id)
+        else:
+            self.toggle_check(node_id)
+
+    def _on_chevron_click(self, node_id: str) -> None:
+        node = self.tree_nodes.get(node_id)
+        if node is None or node.kind != "folder":
+            return
+        node.expanded = not node.expanded
+        row = self._row_widgets.get(node_id)
+        if row:
+            row.set_chevron(node.expanded)
+        self._rebuild_visible()
+        self._sync_rows()
 
     def _build_progress_section(self) -> None:
         progress_frame = ctk.CTkFrame(self.window, fg_color="transparent")
