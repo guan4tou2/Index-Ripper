@@ -128,14 +128,19 @@ class RowWidget:
                 anchor="e",
             ).pack(side="right", padx=(0, 8))
 
-        self._bind_all(self.frame)
+        # Bind hover only on outer frame (avoids <Leave> flicker from child entry)
+        self.frame.bind("<Enter>", self._on_enter)
+        self.frame.bind("<Leave>", self._on_leave)
+        # Bind click on frame and all non-chevron children
+        self._bind_clicks(self.frame)
 
-    def _bind_all(self, widget) -> None:
-        widget.bind("<Enter>", self._on_enter)
-        widget.bind("<Leave>", self._on_leave)
+    def _bind_clicks(self, widget) -> None:
+        """Bind click handler on widget and all children except the chevron."""
+        if hasattr(self, "chevron") and widget is self.chevron:
+            return  # chevron has its own command; don't intercept clicks
         widget.bind("<Button-1>", self._on_click)
         for child in widget.winfo_children():
-            self._bind_all(child)
+            self._bind_clicks(child)
 
     def _on_enter(self, _event=None) -> None:
         self._hovered = True
@@ -669,7 +674,7 @@ class WebsiteCopierCtk:
                         self.tree_scroll_frame, self, node, depth
                     )
                 else:
-                    self._row_widgets[node_id].frame.pack(fill="x", padx=4, pady=1)
+                    self._row_widgets[node_id].frame.pack(fill="x", padx=4, pady=0)
 
         self._last_visible = list(self._visible_nodes)
 
