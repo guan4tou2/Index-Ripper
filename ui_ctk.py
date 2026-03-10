@@ -300,6 +300,9 @@ class WebsiteCopierCtk:
         self.drag_anchor_item = ""
         self._last_toggle_time = 0.0
         self._search_after_id = None
+        self.tree_nodes = {}
+        self.tree_roots = []
+        self._node_counter = 0
         self.context_menu = tk.Menu(self.window, tearoff=0)
 
     def _build_full_ui(self) -> None:
