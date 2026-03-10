@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from queue import Empty, Queue
 
 import tkinter as tk
@@ -25,8 +26,6 @@ from ui_theme import (
     ui_tokens,
 )
 
-from dataclasses import dataclass, field
-
 @dataclass
 class TreeNode:
     node_id: str
@@ -40,7 +39,7 @@ class TreeNode:
     checked: bool = False
     expanded: bool = False
     hidden: bool = False  # True when filtered out by search
-    children: list = field(default_factory=list)  # ordered list of child node_ids
+    children: list[str] = field(default_factory=list)  # ordered list of child node_ids
 
 
 def should_skip_file_row(existing_entry) -> bool:
