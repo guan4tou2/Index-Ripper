@@ -1085,30 +1085,26 @@ class WebsiteCopierCtk:
             current_path = current_path + "/" + part
             with self.folders_dict_lock:
                 existing_id = self.folders.get(current_path)
-            if existing_id:
-                parent_id = existing_id
-                continue
-
-            node_id = self._next_node_id()
-            node = TreeNode(
-                node_id=node_id,
-                parent_id=parent_id,
-                name=part,
-                kind="folder",
-                full_path="",
-                size="",
-                file_type="",
-                icon_group="folder",
-            )
-            self.tree_nodes[node_id] = node
-            if parent_id:
-                self.tree_nodes[parent_id].children.append(node_id)
-            else:
-                self.tree_roots.append(node_id)
-
-            with self.folders_dict_lock:
-                self.folders[current_path] = node_id
-            parent_id = node_id
+                if not existing_id:
+                    node_id = self._next_node_id()
+                    node = TreeNode(
+                        node_id=node_id,
+                        parent_id=parent_id,
+                        name=part,
+                        kind="folder",
+                        full_path="",
+                        size="",
+                        file_type="",
+                        icon_group="folder",
+                    )
+                    self.tree_nodes[node_id] = node
+                    if parent_id:
+                        self.tree_nodes[parent_id].children.append(node_id)
+                    else:
+                        self.tree_roots.append(node_id)
+                    self.folders[current_path] = node_id
+                    existing_id = node_id
+            parent_id = existing_id
 
         self._rebuild_visible()
         self._sync_rows()
