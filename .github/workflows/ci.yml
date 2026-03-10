@@ -1,4 +1,4 @@
-name: Build Executables (uv + PyInstaller)
+name: CI
 
 on:
   push:
@@ -12,8 +12,24 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    name: Test (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run unit tests
+        run: uv run python -m pytest test_backend.py test_app_utils.py test_settings_store.py test_security_utils.py test_ui_theme.py test_ui_downloads.py -v
+
   build:
     name: Build (${{ matrix.os }})
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -35,66 +51,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Install uv
         uses: astral-sh/setup-uv@v3
 
-      - name: Setup conda (macOS & Linux)
-        if: matrix.os != 'windows-latest'
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          auto-update-conda: true
-          python-version: "3.12"
-          channels: conda-forge
+      - name: Install dependencies
+        run: uv sync
 
-      - name: Install tk (macOS & Linux)
-        if: matrix.os != 'windows-latest'
-        shell: bash -l {0}
-        run: |
-          conda install -y tk
-
-      - name: Install dependencies (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          uv pip install --system -r requirements.txt pyinstaller pillow
-
-      - name: Install dependencies (macOS & Linux)
-        if: matrix.os != 'windows-latest'
-        shell: bash -l {0}
-        run: |
-          uv pip install --system -r requirements.txt pyinstaller pillow
+      - name: Install PyInstaller
+        run: uv pip install pyinstaller
 
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+          uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper --collect-all customtkinter index_ripper.py
 
       - name: Build (macOS)
         if: startsWith(matrix.os, 'macos-')
-        shell: bash -l {0}
         run: |
-          pyinstaller -F --windowed --name=IndexRipper \
-            --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
+          uv run pyinstaller -F --windowed --name=IndexRipper \
+            --collect-all customtkinter --icon=app.png index_ripper.py
           [ -f dist/IndexRipper ] && rm -f dist/IndexRipper || true
 
       - name: Sign app (ad-hoc)
         if: startsWith(matrix.os, 'macos-')
-        shell: bash -l {0}
         run: |
-          # 依你提供的方法，於建置後進行 ad-hoc 簽章
           codesign --force --deep --sign - "dist/IndexRipper.app"
 
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-latest'
-        shell: bash -l {0}
         run: |
-          pyinstaller --onefile --windowed --name=IndexRipper \
-            --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
+          uv run pyinstaller --onefile --windowed --name=IndexRipper \
+            --collect-all customtkinter --icon=app.png index_ripper.py
 
       - name: Verify artifact exists
         shell: bash
@@ -142,14 +129,10 @@ jobs:
               zip_name="${dir}.app.zip"
               app_src=""
               if [ -d "$dir/IndexRipper.app" ]; then
-                # 常見情況：artifact 內已有 .app 目錄
                 app_src="$dir/IndexRipper.app"
               elif [ -d "$dir/dist/IndexRipper.app" ]; then
-                # 另一種情況：保留了 dist 前綴
                 app_src="$dir/dist/IndexRipper.app"
               elif [ -d "$dir/Contents" ]; then
-                # 展平情況：artifact 只包含 .app 內容，重建包裹
-                # 先清理可能存在的 _pkg，再逐一搬移，並忽略 _pkg 本身，避免遞迴移動
                 rm -rf "$dir/_pkg"
                 mkdir -p "$dir/_pkg/IndexRipper.app"
                 shopt -s dotglob nullglob
@@ -184,8 +167,6 @@ jobs:
             mv artifacts/IndexRipper-Windows/IndexRipper.exe artifacts/IndexRipper-Windows.exe
           fi
           if [ -f artifacts/IndexRipper-Linux/IndexRipper ]; then
-            # 目的地若與資料夾同名會造成 mv 視為移動到同一資料夾，導致「same file」錯誤
-            # 因此改以 .bin 作為檔名，避免與資料夾名稱衝突
             mv artifacts/IndexRipper-Linux/IndexRipper artifacts/IndexRipper-Linux.bin
           fi
 

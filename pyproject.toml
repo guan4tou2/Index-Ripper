@@ -10,5 +10,12 @@ dependencies = [
     "ttkbootstrap>=1.10.1,<2.0.0",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+
 [project.scripts]
 index-ripper = "ui_ctk:main"
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
