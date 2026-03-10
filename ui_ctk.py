@@ -54,17 +54,17 @@ _EMOJI_ICONS = {
     "binary":   "⚙️",
 }
 
-_BG_NORMAL        = ("gray95", "gray17")
-_BG_HOVER         = ("#E2E8F0", "#2D3748")
-_BG_CHECKED       = ("#DBEAFE", "#1E3A5F")
-_BG_CHECKED_HOVER = ("#BFDBFE", "#1E40AF")
+_BG_NORMAL        = "transparent"
+_BG_HOVER         = ("#F1F5F9", "#1E293B")
+_BG_CHECKED       = ("#EFF6FF", "#172554")
+_BG_CHECKED_HOVER = ("#DBEAFE", "#1E3A5F")
 
 
 class RowWidget:
     """One visible row in the FileTree."""
 
     INDENT_PX = 20
-    ROW_HEIGHT = 38
+    ROW_HEIGHT = 36
 
     def __init__(self, parent, app, node: TreeNode, depth: int):
         self.app = app
@@ -73,8 +73,15 @@ class RowWidget:
         self._hovered = False
 
         self.frame = ctk.CTkFrame(parent, height=self.ROW_HEIGHT, corner_radius=4)
-        self.frame.pack(fill="x", padx=4, pady=1)
+        self.frame.pack(fill="x", padx=4, pady=0)
         self.frame.pack_propagate(False)
+
+        # 3-px accent bar (left edge, blue when checked)
+        self._accent = ctk.CTkFrame(
+            self.frame, width=3, corner_radius=0,
+            fg_color="#2563EB" if node.checked else "transparent",
+        )
+        self._accent.pack(side="left", fill="y")
 
         # Indent spacer
         if depth > 0:
@@ -83,28 +90,13 @@ class RowWidget:
                 fg_color="transparent", height=self.ROW_HEIGHT,
             ).pack(side="left")
 
-        # Chevron (folders) or invisible spacer (files)
-        if node.kind == "folder":
-            self.chevron = ctk.CTkButton(
-                self.frame, text="▶" if not node.expanded else "▼",
-                width=22, height=22, fg_color="transparent",
-                hover_color=("gray85", "gray30"), text_color=("gray40", "gray60"),
-                font=ctk.CTkFont(size=10),
-                command=lambda: app._on_chevron_click(self.node_id),
-            )
-            self.chevron.pack(side="left", padx=(2, 0))
-        else:
-            ctk.CTkFrame(
-                self.frame, width=26, fg_color="transparent", height=self.ROW_HEIGHT,
-            ).pack(side="left")
-
         # Emoji icon
         ctk.CTkLabel(
             self.frame,
             text=_EMOJI_ICONS.get(node.icon_group, "📄"),
             font=ctk.CTkFont(size=18),
-            width=30,
-        ).pack(side="left", padx=(2, 4))
+            width=28,
+        ).pack(side="left", padx=(4, 4))
 
         # Name label
         self.name_label = ctk.CTkLabel(
@@ -115,36 +107,30 @@ class RowWidget:
         )
         self.name_label.pack(side="left", fill="x", expand=True)
 
-        # Size + type (right side, files only)
-        if node.kind == "file":
-            if node.size:
-                ctk.CTkLabel(
-                    self.frame,
-                    text=node.size,
-                    font=ctk.CTkFont(size=12),
-                    text_color=("gray50", "gray60"),
-                    width=90,
-                    anchor="e",
-                ).pack(side="right", padx=(0, 4))
-            if node.icon_group and node.icon_group != "binary":
-                ctk.CTkLabel(
-                    self.frame,
-                    text=node.icon_group,
-                    font=ctk.CTkFont(size=11),
-                    text_color=("gray50", "gray60"),
-                    width=65,
-                    anchor="e",
-                ).pack(side="right", padx=(0, 2))
+        # Chevron on RIGHT (folders only)
+        if node.kind == "folder":
+            self.chevron = ctk.CTkButton(
+                self.frame, text="▼" if node.expanded else "▶",
+                width=22, height=22, fg_color="transparent",
+                hover_color=("gray85", "gray30"), text_color=("gray40", "gray60"),
+                font=ctk.CTkFont(size=10),
+                command=lambda: app._on_chevron_click(self.node_id),
+            )
+            self.chevron.pack(side="right", padx=(4, 4))
+        elif node.kind == "file" and node.size:
+            # Size label (right side, files only)
+            ctk.CTkLabel(
+                self.frame,
+                text=node.size,
+                font=ctk.CTkFont(size=12),
+                text_color=("gray50", "gray60"),
+                width=80,
+                anchor="e",
+            ).pack(side="right", padx=(0, 8))
 
-        self._update_bg()
-
-        # Bind hover + click on frame and all children
         self._bind_all(self.frame)
 
     def _bind_all(self, widget) -> None:
-        # Skip chevron button — it has its own command; don't overlay _on_click
-        if hasattr(self, "chevron") and widget is self.chevron:
-            return
         widget.bind("<Enter>", self._on_enter)
         widget.bind("<Leave>", self._on_leave)
         widget.bind("<Button-1>", self._on_click)
@@ -164,6 +150,9 @@ class RowWidget:
 
     def set_checked(self, checked: bool) -> None:
         self._checked = checked
+        self._accent.configure(
+            fg_color="#2563EB" if checked else "transparent"
+        )
         self._update_bg()
 
     def set_chevron(self, expanded: bool) -> None:
