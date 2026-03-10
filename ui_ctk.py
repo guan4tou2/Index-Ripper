@@ -324,7 +324,7 @@ class WebsiteCopierCtk:
         self.window.grid_rowconfigure(3, weight=1)   # filetree expands (row shifted by types row)
         self.window.grid_rowconfigure(5, weight=0)   # panels fixed
 
-        self._build_header()
+        self._build_toolbar()
         self._build_filters_row()
         self._build_filetree()
         self._build_progress_section()
@@ -341,56 +341,56 @@ class WebsiteCopierCtk:
         self.context_menu.add_command(label="Expand All", command=self.expand_all)
         self.context_menu.add_command(label="Collapse All", command=self.collapse_all)
 
-    def _build_header(self) -> None:
-        header = ctk.CTkFrame(self.window, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
-        header.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(
-            header, text="URL", font=ctk.CTkFont(size=14, weight="bold")
-        ).grid(row=0, column=0, sticky="w", padx=(0, 8))
+    def _build_toolbar(self) -> None:
+        toolbar = ctk.CTkFrame(self.window, fg_color="transparent")
+        toolbar.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        toolbar.grid_columnconfigure(0, weight=1)  # URL entry expands
 
         self.url_var = tk.StringVar()
         self.url_entry = ctk.CTkEntry(
-            header, textvariable=self.url_var,
+            toolbar, textvariable=self.url_var,
             placeholder_text="https://",
             font=ctk.CTkFont(size=14),
             height=36,
         )
-        self.url_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        self.url_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
-        self.status_label = ctk.CTkLabel(
-            header, text="Ready", text_color="#059669", font=ctk.CTkFont(size=13)
-        )
-        self.status_label.grid(row=0, column=2, sticky="e", padx=(0, 8))
+        # Scan button (toggles "Scan" ↔ "Stop Scan")
+        self.scan_btn = ctk.CTkButton(toolbar, text="Scan", command=self.start_scan, width=90)
+        self.scan_btn.grid(row=0, column=1, padx=(0, 4))
 
-        actions = ctk.CTkFrame(header, fg_color="transparent")
-        actions.grid(row=0, column=3, sticky="e")
-
-        self.scan_btn = ctk.CTkButton(actions, text="Scan", command=self.start_scan)
-        self.scan_btn.pack(side="left", padx=3)
-
+        # Pause Scan button — hidden by default, shown only while scanning
         self.scan_pause_btn = ctk.CTkButton(
-            actions, text="Pause Scan",
+            toolbar, text="Pause",
             fg_color=("gray70", "gray30"),
             hover_color=("gray60", "gray40"),
             command=self.toggle_scan_pause,
+            width=80,
             state="disabled",
         )
-        self.scan_pause_btn.pack(side="left", padx=3)
+        self.scan_pause_btn.grid(row=0, column=2, padx=(0, 8))
+        self.scan_pause_btn.grid_remove()  # hidden until scan starts
 
-        self.clear_scan_btn = ctk.CTkButton(
-            actions, text="Clear",
-            fg_color=("gray70", "gray30"),
-            hover_color=("gray60", "gray40"),
-            command=self.clear_scan_results,
+        # Status: dot + text
+        status_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
+        status_frame.grid(row=0, column=3, sticky="e")
+
+        self._status_dot = ctk.CTkFrame(
+            status_frame, width=8, height=8, corner_radius=4,
+            fg_color="#059669",
         )
-        self.clear_scan_btn.pack(side="left", padx=3)
+        self._status_dot.pack(side="left", padx=(0, 5))
+        self._status_dot.pack_propagate(False)
 
-        # URL context menu
+        self.status_label = ctk.CTkLabel(
+            status_frame, text="Ready",
+            text_color="#059669", font=ctk.CTkFont(size=13),
+        )
+        self.status_label.pack(side="left")
+
+        # URL context menu (right-click paste)
         self.url_context_menu = tk.Menu(self.window, tearoff=0)
         self.url_context_menu.add_command(label="Paste", command=self._paste_into_url_entry)
-
         self.url_entry.bind("<Button-2>", self._show_url_context_menu)
         self.url_entry.bind("<Button-3>", self._show_url_context_menu)
 
@@ -882,6 +882,7 @@ class WebsiteCopierCtk:
     def _set_status(self, text: str, color: str = "#059669") -> None:
         try:
             self.status_label.configure(text=text, text_color=color)
+            self._status_dot.configure(fg_color=color)
         except Exception:
             pass
 
@@ -1102,6 +1103,7 @@ class WebsiteCopierCtk:
 
     def on_scan_started(self, *, url: str = "") -> None:
         self.scan_btn.configure(text="Stop Scan")
+        self.scan_pause_btn.grid()          # show
         self.scan_pause_btn.configure(state="normal")
         self.progress_bar.set(0)
         self.progress_label.configure(text="Scanning…")
@@ -1113,7 +1115,8 @@ class WebsiteCopierCtk:
     def on_scan_finished(self, *, stopped: bool = False) -> None:
         def _finish():
             self.scan_btn.configure(text="Scan")
-            self.scan_pause_btn.configure(text="Pause Scan", state="disabled")
+            self.scan_pause_btn.grid_remove()       # hide
+            self.scan_pause_btn.configure(text="Pause", state="disabled")
             if stopped:
                 self.progress_bar.set(0)
                 self.progress_label.configure(text="Scan stopped")
