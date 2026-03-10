@@ -317,6 +317,12 @@ class WebsiteCopierCtk:
         self.tree_nodes = {}
         self.tree_roots = []
         self._node_counter = 0
+        self.scan_pause_btn = type("_Stub", (), {
+            "configure": lambda s, **kw: None,
+            "grid": lambda s: None,
+            "grid_remove": lambda s: None,
+        })()
+        self._status_dot = type("_Stub", (), {"configure": lambda s, **kw: None})()
         self.context_menu = tk.Menu(self.window, tearoff=0)
 
     def _build_full_ui(self) -> None:
@@ -345,6 +351,7 @@ class WebsiteCopierCtk:
         toolbar = ctk.CTkFrame(self.window, fg_color="transparent")
         toolbar.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
         toolbar.grid_columnconfigure(0, weight=1)  # URL entry expands
+        toolbar.grid_columnconfigure(2, minsize=96)  # reserve space for pause btn
 
         self.url_var = tk.StringVar()
         self.url_entry = ctk.CTkEntry(
@@ -1102,12 +1109,14 @@ class WebsiteCopierCtk:
         self._set_status("Ready", "#059669")
 
     def on_scan_started(self, *, url: str = "") -> None:
-        self.scan_btn.configure(text="Stop Scan")
-        self.scan_pause_btn.grid()          # show
-        self.scan_pause_btn.configure(state="normal")
-        self.progress_bar.set(0)
-        self.progress_label.configure(text="Scanning…")
-        self._set_status("Scanning", "#B45309")
+        def _start():
+            self.scan_btn.configure(text="Stop Scan")
+            self.scan_pause_btn.grid()          # show
+            self.scan_pause_btn.configure(state="normal")
+            self.progress_bar.set(0)
+            self.progress_label.configure(text="Scanning…")
+            self._set_status("Scanning", "#B45309")
+        self.window.after(0, _start)
 
     def on_scan_progress(self, *, scanned_urls: int = 0, total_urls: int = 0) -> None:
         self.window.after(0, lambda: self._update_scan_progress(scanned_urls, total_urls))
