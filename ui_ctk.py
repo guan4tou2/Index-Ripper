@@ -1074,37 +1074,48 @@ class WebsiteCopierCtk:
         self.progress_label.configure(text=f"Scan: {scanned}/{total}")
 
     def add_folder(self, dir_path: str, url: str) -> str:
-        """Create folder nodes in the treeview for the given path."""
+        """Ensure all path segments exist as folder nodes; return leaf node_id."""
         if not dir_path:
             dir_path = "/"
         parts = [p for p in dir_path.split("/") if p]
 
-        current = ""
         parent_id = ""
+        current_path = ""
         for part in parts:
-            current = current + "/" + part
+            current_path = current_path + "/" + part
             with self.folders_dict_lock:
-                existing = self.folders.get(current)
-            if existing:
-                parent_id = existing
+                existing_id = self.folders.get(current_path)
+            if existing_id:
+                parent_id = existing_id
                 continue
 
-            node_id = self.tree.insert(
-                parent_id,
-                "end",
-                text=f"📁 {part}",
-                values=("", "dir", ""),
-                tags=("folder",),
-                open=True,
+            node_id = self._next_node_id()
+            node = TreeNode(
+                node_id=node_id,
+                parent_id=parent_id,
+                name=part,
+                kind="folder",
+                full_path="",
+                size="",
+                file_type="",
+                icon_group="folder",
             )
+            self.tree_nodes[node_id] = node
+            if parent_id:
+                self.tree_nodes[parent_id].children.append(node_id)
+            else:
+                self.tree_roots.append(node_id)
+
             with self.folders_dict_lock:
-                self.folders[current] = node_id
+                self.folders[current_path] = node_id
             parent_id = node_id
 
+        self._rebuild_visible()
+        self._sync_rows()
         return parent_id
 
     def add_file(self, dir_path: str, url: str, file_name: str, size, file_type: str, full_path: str) -> None:
-        """Add a file row to the treeview."""
+        """Add a file node to the tree."""
         if not file_name:
             return
         is_html_dir_like = (
@@ -1113,6 +1124,7 @@ class WebsiteCopierCtk:
             and "." not in (file_name or "")
         )
         parent_id = self.add_folder(dir_path, url)
+
         with self.files_dict_lock:
             existing_entry = self.files_dict.get(full_path)
             if should_skip_file_row(existing_entry):
@@ -1135,25 +1147,36 @@ class WebsiteCopierCtk:
 
         ext = normalize_extension(file_name)
         self._add_file_type_filter(ext)
+        self.file_type_counts[ext] = self.file_type_counts.get(ext, 0) + 1
+        cb = self.file_type_widgets.get(ext)
+        if cb:
+            label = ext if ext else "(no ext)"
+            cb.configure(text=f"{label} ({self.file_type_counts[ext]})")
         var = self.file_types.get(ext)
         if var is not None and not var.get():
             return
-        icon, group = self._file_icon_and_group(file_name, file_type)
-        display_type = group if not file_type else f"{group} | {file_type}"
 
-        node_id = self.tree.insert(
-            parent_id,
-            "end",
-            text=f"{icon} {file_name}",
-            values=(size or "", display_type, full_path or ""),
-            tags=("file", ext),
+        _icon, group = self._file_icon_and_group(file_name, file_type)
+        node_id = self._next_node_id()
+        node = TreeNode(
+            node_id=node_id,
+            parent_id=parent_id,
+            name=file_name,
+            kind="file",
+            full_path=full_path or "",
+            size=size or "",
+            file_type=file_type or "",
+            icon_group=group,
+            checked=full_path in self.checked_items,
         )
-        if full_path and full_path in self.checked_items:
-            self._set_item_checked_visual(node_id, True)
-            tags = list(self.tree.item(node_id, "tags"))
-            if "checked" not in tags:
-                tags.append("checked")
-                self.tree.item(node_id, tags=tuple(tags))
+        self.tree_nodes[node_id] = node
+        if parent_id:
+            self.tree_nodes[parent_id].children.append(node_id)
+        else:
+            self.tree_roots.append(node_id)
+
+        self._rebuild_visible()
+        self._sync_rows()
 
     def _file_icon_and_group(self, file_name: str, file_type: str | None):
         ext = normalize_extension(file_name)
