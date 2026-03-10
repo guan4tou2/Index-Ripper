@@ -42,6 +42,146 @@ class TreeNode:
     children: list[str] = field(default_factory=list)  # ordered list of child node_ids
 
 
+_EMOJI_ICONS = {
+    "folder":   "📁",
+    "image":    "🖼️",
+    "document": "📄",
+    "archive":  "🗜️",
+    "code":     "💻",
+    "audio":    "🎵",
+    "video":    "🎬",
+    "text":     "📝",
+    "binary":   "⚙️",
+}
+
+_BG_NORMAL        = ("gray95", "gray17")
+_BG_HOVER         = ("#E2E8F0", "#2D3748")
+_BG_CHECKED       = ("#DBEAFE", "#1E3A5F")
+_BG_CHECKED_HOVER = ("#BFDBFE", "#1E40AF")
+
+
+class RowWidget:
+    """One visible row in the FileTree."""
+
+    INDENT_PX = 20
+    ROW_HEIGHT = 34
+
+    def __init__(self, parent, app, node: TreeNode, depth: int):
+        self.app = app
+        self.node_id = node.node_id
+        self._checked = node.checked
+        self._hovered = False
+
+        self.frame = ctk.CTkFrame(parent, height=self.ROW_HEIGHT, corner_radius=4)
+        self.frame.pack(fill="x", padx=4, pady=1)
+        self.frame.pack_propagate(False)
+
+        # Indent spacer
+        if depth > 0:
+            ctk.CTkFrame(
+                self.frame, width=depth * self.INDENT_PX,
+                fg_color="transparent", height=self.ROW_HEIGHT,
+            ).pack(side="left")
+
+        # Chevron (folders) or invisible spacer (files)
+        if node.kind == "folder":
+            self.chevron = ctk.CTkButton(
+                self.frame, text="▶" if not node.expanded else "▼",
+                width=22, height=22, fg_color="transparent",
+                hover_color=("gray85", "gray30"), text_color=("gray40", "gray60"),
+                font=ctk.CTkFont(size=10),
+                command=lambda: app._on_chevron_click(self.node_id),
+            )
+            self.chevron.pack(side="left", padx=(2, 0))
+        else:
+            ctk.CTkFrame(
+                self.frame, width=26, fg_color="transparent", height=self.ROW_HEIGHT,
+            ).pack(side="left")
+
+        # Emoji icon
+        ctk.CTkLabel(
+            self.frame,
+            text=_EMOJI_ICONS.get(node.icon_group, "📄"),
+            font=ctk.CTkFont(size=16),
+            width=28,
+        ).pack(side="left", padx=(2, 4))
+
+        # Name label
+        self.name_label = ctk.CTkLabel(
+            self.frame,
+            text=node.name,
+            anchor="w",
+            font=ctk.CTkFont(size=13, weight="bold" if node.kind == "folder" else "normal"),
+        )
+        self.name_label.pack(side="left", fill="x", expand=True)
+
+        # Size + type (right side, files only)
+        if node.kind == "file":
+            if node.size:
+                ctk.CTkLabel(
+                    self.frame,
+                    text=node.size,
+                    font=ctk.CTkFont(size=11),
+                    text_color=("gray50", "gray60"),
+                    width=80,
+                    anchor="e",
+                ).pack(side="right", padx=(0, 4))
+            if node.icon_group and node.icon_group != "binary":
+                ctk.CTkLabel(
+                    self.frame,
+                    text=node.icon_group,
+                    font=ctk.CTkFont(size=10),
+                    text_color=("gray50", "gray60"),
+                    width=60,
+                    anchor="e",
+                ).pack(side="right", padx=(0, 2))
+
+        self._update_bg()
+
+        # Bind hover + click on frame and all children
+        self._bind_all(self.frame)
+
+    def _bind_all(self, widget) -> None:
+        widget.bind("<Enter>", self._on_enter)
+        widget.bind("<Leave>", self._on_leave)
+        widget.bind("<Button-1>", self._on_click)
+        for child in widget.winfo_children():
+            self._bind_all(child)
+
+    def _on_enter(self, _event=None) -> None:
+        self._hovered = True
+        self._update_bg()
+
+    def _on_leave(self, _event=None) -> None:
+        self._hovered = False
+        self._update_bg()
+
+    def _on_click(self, event) -> None:
+        self.app._on_row_click(self.node_id, event)
+
+    def set_checked(self, checked: bool) -> None:
+        self._checked = checked
+        self._update_bg()
+
+    def set_chevron(self, expanded: bool) -> None:
+        if hasattr(self, "chevron"):
+            self.chevron.configure(text="▼" if expanded else "▶")
+
+    def _update_bg(self) -> None:
+        if self._checked and self._hovered:
+            color = _BG_CHECKED_HOVER
+        elif self._checked:
+            color = _BG_CHECKED
+        elif self._hovered:
+            color = _BG_HOVER
+        else:
+            color = _BG_NORMAL
+        self.frame.configure(fg_color=color)
+
+    def destroy(self) -> None:
+        self.frame.destroy()
+
+
 def should_skip_file_row(existing_entry) -> bool:
     """Return True when a file row is already fully registered."""
     return existing_entry is not None
