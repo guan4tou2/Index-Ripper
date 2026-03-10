@@ -142,6 +142,9 @@ class RowWidget:
         self._bind_all(self.frame)
 
     def _bind_all(self, widget) -> None:
+        # Skip chevron button — it has its own command; don't overlay _on_click
+        if hasattr(self, "chevron") and widget is self.chevron:
+            return
         widget.bind("<Enter>", self._on_enter)
         widget.bind("<Leave>", self._on_leave)
         widget.bind("<Button-1>", self._on_click)
