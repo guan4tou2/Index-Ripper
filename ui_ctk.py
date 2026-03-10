@@ -853,34 +853,55 @@ class WebsiteCopierCtk:
         for node_id in list(self.tree_nodes):
             self.toggle_check(node_id, force_check=False, _skip_children=True)
 
-    def expand_all(self, parent=""):
-        for item in self.tree.get_children(parent):
-            self.tree.item(item, open=True)
-            self.expand_all(item)
+    def expand_all(self, parent: str = "") -> None:
+        targets = self.tree_roots if not parent else (
+            self.tree_nodes[parent].children if parent in self.tree_nodes else []
+        )
+        for node_id in targets:
+            node = self.tree_nodes.get(node_id)
+            if node and node.kind == "folder":
+                node.expanded = True
+                self.expand_all(node_id)
+        if not parent:  # Only rebuild once at top-level call
+            self._rebuild_visible()
+            self._sync_rows()
 
-    def collapse_all(self, parent=""):
-        for item in self.tree.get_children(parent):
-            self.tree.item(item, open=False)
-            self.collapse_all(item)
+    def collapse_all(self, parent: str = "") -> None:
+        targets = self.tree_roots if not parent else (
+            self.tree_nodes[parent].children if parent in self.tree_nodes else []
+        )
+        for node_id in targets:
+            node = self.tree_nodes.get(node_id)
+            if node and node.kind == "folder":
+                node.expanded = False
+                self.collapse_all(node_id)
+        if not parent:  # Only rebuild once at top-level call
+            self._rebuild_visible()
+            self._sync_rows()
 
-    def sort_tree(self, col: str) -> None:
-        def get_key(item_id: str) -> str:
-            if col == "#0":
-                return self._strip_checkmark(self.tree.item(item_id, "text")).lower()
-            return self.tree.set(item_id, col).lower()
-
-        def sort_children(parent: str) -> None:
-            children = list(self.tree.get_children(parent))
+    def sort_tree(self, col: str = "name") -> None:
+        def sort_children(children: list[str]) -> None:
             if not children:
                 return
-            children.sort(key=get_key, reverse=self.sort_reverse)
-            for idx, item in enumerate(children):
-                self.tree.move(item, parent, idx)
-            for item in children:
-                sort_children(item)
+            def key(node_id: str) -> str:
+                node = self.tree_nodes.get(node_id)
+                if node is None:
+                    return ""
+                if col == "size":
+                    return node.size.lower()
+                if col == "type":
+                    return node.icon_group.lower()
+                return node.name.lower()
+            children.sort(key=key, reverse=self.sort_reverse)
+            for node_id in children:
+                node = self.tree_nodes.get(node_id)
+                if node:
+                    sort_children(node.children)
 
-        sort_children("")
+        sort_children(self.tree_roots)
         self.sort_reverse = not self.sort_reverse
+        self._rebuild_visible()
+        self._sync_rows()
 
     # --- Status color mapping ---
 
@@ -1309,3 +1330,17 @@ class WebsiteCopierCtk:
         )
         cb.pack(side="left", padx=4, pady=4)
         self.file_type_widgets[ext] = cb
+
+    def _on_type_filter_changed(self, ext: str) -> None:
+        """Show or hide existing tree rows when a file-type checkbox is toggled."""
+        if self.full_tree_backup:
+            return  # search filter active; handled by _filter_tree_by_term
+        var = self.file_types.get(ext)
+        if var is None:
+            return
+        visible = var.get()
+        for node in self.tree_nodes.values():
+            if node.kind == "file" and normalize_extension(node.name) == ext:
+                node.hidden = not visible
+        self._rebuild_visible()
+        self._sync_rows()
