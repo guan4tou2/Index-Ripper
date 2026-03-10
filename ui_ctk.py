@@ -21,8 +21,6 @@ from ui_downloads import DownloadsPanel
 from ui_theme import (
     apply_app_theme,
     configure_action_button_styles,
-    configure_treeview_style,
-    treeview_tag_colors,
     ui_tokens,
 )
 
@@ -294,6 +292,15 @@ class WebsiteCopierCtk:
         self.log_text.insert("end", "UI smoke minimal view initialized.\n")
         self.panels_notebook = None
         self.logs_tab = None
+        self._visible_nodes = []
+        self._row_widgets = {}
+        self.tree_scroll_frame = None
+        self.full_tree_backup = {}
+        self.sort_reverse = False
+        self.drag_anchor_item = ""
+        self._last_toggle_time = 0.0
+        self._search_after_id = None
+        self.context_menu = tk.Menu(self.window, tearoff=0)
 
     def _build_full_ui(self) -> None:
         self.window.grid_columnconfigure(0, weight=1)
@@ -301,7 +308,7 @@ class WebsiteCopierCtk:
 
         self._build_header()
         self._build_filters_row()
-        self._build_treeview()
+        self._build_filetree()
         self._build_progress_section()
         self._build_panels()
         self._build_download_controls()
@@ -541,15 +548,15 @@ class WebsiteCopierCtk:
             width=150,
         ).pack(side="left")
 
-    def _build_treeview(self) -> None:
-        tree_frame = ctk.CTkFrame(self.window, fg_color="transparent")
-        tree_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(4, 0))
-        tree_frame.grid_columnconfigure(0, weight=1)
-        tree_frame.grid_rowconfigure(1, weight=1)
+    def _build_filetree(self) -> None:
+        outer = ctk.CTkFrame(self.window, fg_color="transparent")
+        outer.grid(row=2, column=0, sticky="nsew", padx=10, pady=(4, 0))
+        outer.grid_columnconfigure(0, weight=1)
+        outer.grid_rowconfigure(1, weight=1)
 
-        # 搜尋欄
-        search_bar = ctk.CTkFrame(tree_frame, fg_color="transparent")
-        search_bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        # Search bar
+        search_bar = ctk.CTkFrame(outer, fg_color="transparent")
+        search_bar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         search_bar.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(search_bar, text="Search").grid(row=0, column=0, padx=(0, 6))
         self.search_var = tk.StringVar()
@@ -557,45 +564,17 @@ class WebsiteCopierCtk:
         self.search_entry.grid(row=0, column=1, sticky="ew")
         self.search_var.trace_add("write", self.on_search_filter_changed)
 
-        # Treeview
-        configure_treeview_style(self.window, ctk, ttk)
-        self.tree = ttk.Treeview(
-            tree_frame,
-            columns=("size", "type", "full_path"),
-            show="tree headings",
-            selectmode="extended",
+        # Scrollable tree container
+        self.tree_scroll_frame = ctk.CTkScrollableFrame(
+            outer,
+            fg_color=("gray95", "gray17"),
+            corner_radius=8,
         )
-        self.tree.heading("#0", text="Path", command=lambda: self.sort_tree("#0"))
-        self.tree.heading("size", text="Size", command=lambda: self.sort_tree("size"))
-        self.tree.heading("type", text="Type", command=lambda: self.sort_tree("type"))
-        self.tree.column("#0", width=600, stretch=True)
-        self.tree.column("size", width=120, stretch=False, anchor="e")
-        self.tree.column("type", width=240, stretch=False)
-        self.tree.column("full_path", width=0, stretch=False)
+        self.tree_scroll_frame.grid(row=1, column=0, sticky="nsew")
 
-        tag_colors = treeview_tag_colors(self.window)
-        self.tree.tag_configure("checked", foreground=tag_colors["checked"])
-
-        style = ttk.Style()
-        style.configure("Treeview", font=("SF Pro Text", 14), rowheight=34)
-        style.configure("Treeview.Heading", font=("SF Pro Text", 13, "bold"))
-
-        self.tree.grid(row=1, column=0, sticky="nsew")
-
-        tree_scroll = tk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=tree_scroll.set)
-        tree_scroll.grid(row=1, column=1, sticky="ns")
-
-        # 鍵盤與滑鼠綁定
-        self.tree.bind("<Command-a>", self._on_tree_select_all)
-        self.tree.bind("<Control-a>", self._on_tree_select_all)
-        self.tree.bind("<Button-1>", self.on_tree_click)
-        self.tree.bind("<Button-3>", self.show_context_menu)
-        self.tree.bind("<Button-2>", self.show_context_menu)
-        self.tree.bind("<Control-Button-1>", self.show_context_menu)
-        self.tree.bind("<B1-Motion>", self.on_tree_drag_select)
-        self.tree.bind("<space>", self.on_tree_space)
-        self.tree.bind("<Return>", self.on_tree_enter)
+        # Runtime state for view layer
+        self._visible_nodes: list[str] = []
+        self._row_widgets: dict[str, RowWidget] = {}
 
     def _build_progress_section(self) -> None:
         progress_frame = ctk.CTkFrame(self.window, fg_color="transparent")
