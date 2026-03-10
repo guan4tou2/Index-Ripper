@@ -64,7 +64,7 @@ class RowWidget:
     """One visible row in the FileTree."""
 
     INDENT_PX = 20
-    ROW_HEIGHT = 34
+    ROW_HEIGHT = 38
 
     def __init__(self, parent, app, node: TreeNode, depth: int):
         self.app = app
@@ -102,8 +102,8 @@ class RowWidget:
         ctk.CTkLabel(
             self.frame,
             text=_EMOJI_ICONS.get(node.icon_group, "📄"),
-            font=ctk.CTkFont(size=16),
-            width=28,
+            font=ctk.CTkFont(size=18),
+            width=30,
         ).pack(side="left", padx=(2, 4))
 
         # Name label
@@ -111,7 +111,7 @@ class RowWidget:
             self.frame,
             text=node.name,
             anchor="w",
-            font=ctk.CTkFont(size=13, weight="bold" if node.kind == "folder" else "normal"),
+            font=ctk.CTkFont(size=14, weight="bold" if node.kind == "folder" else "normal"),
         )
         self.name_label.pack(side="left", fill="x", expand=True)
 
@@ -121,18 +121,18 @@ class RowWidget:
                 ctk.CTkLabel(
                     self.frame,
                     text=node.size,
-                    font=ctk.CTkFont(size=11),
+                    font=ctk.CTkFont(size=12),
                     text_color=("gray50", "gray60"),
-                    width=80,
+                    width=90,
                     anchor="e",
                 ).pack(side="right", padx=(0, 4))
             if node.icon_group and node.icon_group != "binary":
                 ctk.CTkLabel(
                     self.frame,
                     text=node.icon_group,
-                    font=ctk.CTkFont(size=10),
+                    font=ctk.CTkFont(size=11),
                     text_color=("gray50", "gray60"),
-                    width=60,
+                    width=65,
                     anchor="e",
                 ).pack(side="right", padx=(0, 2))
 
@@ -231,6 +231,7 @@ class WebsiteCopierCtk:
         self.tree_roots: list[str] = []           # top-level node_ids in insertion order
         self._node_counter: int = 0              # monotonic counter for unique node_ids
         self._last_toggle_time: float = 0.0      # debounce timestamp for row clicks
+        self._tree_update_pending: bool = False  # debounce flag for _schedule_tree_update
 
         self.dir_queue = Queue()
         self.file_queue = Queue()
@@ -274,11 +275,29 @@ class WebsiteCopierCtk:
             self.window.bind("<Control-f>", self.focus_search)
             self.window.bind("<Control-l>", self.focus_logs)
             self.window.bind("<Escape>", self.clear_search)
-            self.window.bind_all("<Command-v>", self._on_global_url_paste, add="+")
-            self.window.bind_all("<Command-V>", self._on_global_url_paste, add="+")
-            self.window.bind_all("<Control-v>", self._on_global_url_paste, add="+")
-            self.window.bind_all("<Control-V>", self._on_global_url_paste, add="+")
-            self.window.bind_all("<<Paste>>", self._on_global_url_paste, add="+")
+            # macOS: forward Cmd+V / Cmd+C / Cmd+X / Cmd+A to the focused widget
+            # so native clipboard shortcuts work in every CTkEntry / CTkTextbox.
+            for seq, virt in (
+                ("<Command-v>", "<<Paste>>"),
+                ("<Command-V>", "<<Paste>>"),
+                ("<Command-c>", "<<Copy>>"),
+                ("<Command-C>", "<<Copy>>"),
+                ("<Command-x>", "<<Cut>>"),
+                ("<Command-X>", "<<Cut>>"),
+                ("<Command-z>", "<<Undo>>"),
+                ("<Command-Z>", "<<Redo>>"),
+            ):
+                virt_local = virt  # capture for lambda
+
+                def _fwd(e, _v=virt_local):
+                    w = e.widget
+                    try:
+                        w.event_generate(_v)
+                    except Exception:
+                        pass
+                    return "break"
+
+                self.window.bind(seq, _fwd, add="+")
 
     def _build_ui(self) -> None:
         if self._ui_smoke:
@@ -308,7 +327,8 @@ class WebsiteCopierCtk:
 
     def _build_full_ui(self) -> None:
         self.window.grid_columnconfigure(0, weight=1)
-        self.window.grid_rowconfigure(2, weight=1)
+        self.window.grid_rowconfigure(3, weight=1)   # filetree expands (row shifted by types row)
+        self.window.grid_rowconfigure(5, weight=0)   # panels fixed
 
         self._build_header()
         self._build_filters_row()
@@ -332,15 +352,22 @@ class WebsiteCopierCtk:
         header.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
         header.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(header, text="URL", font=ctk.CTkFont(weight="bold")).grid(
-            row=0, column=0, sticky="w", padx=(0, 8)
-        )
+        ctk.CTkLabel(
+            header, text="URL", font=ctk.CTkFont(size=14, weight="bold")
+        ).grid(row=0, column=0, sticky="w", padx=(0, 8))
 
         self.url_var = tk.StringVar()
-        self.url_entry = ctk.CTkEntry(header, textvariable=self.url_var, placeholder_text="https://")
+        self.url_entry = ctk.CTkEntry(
+            header, textvariable=self.url_var,
+            placeholder_text="https://",
+            font=ctk.CTkFont(size=14),
+            height=36,
+        )
         self.url_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
 
-        self.status_label = ctk.CTkLabel(header, text="Ready", text_color="#059669")
+        self.status_label = ctk.CTkLabel(
+            header, text="Ready", text_color="#059669", font=ctk.CTkFont(size=13)
+        )
         self.status_label.grid(row=0, column=2, sticky="e", padx=(0, 8))
 
         actions = ctk.CTkFrame(header, fg_color="transparent")
@@ -370,11 +397,6 @@ class WebsiteCopierCtk:
         self.url_context_menu = tk.Menu(self.window, tearoff=0)
         self.url_context_menu.add_command(label="Paste", command=self._paste_into_url_entry)
 
-        self.url_entry.bind("<Command-v>", self._on_url_paste)
-        self.url_entry.bind("<Command-V>", self._on_url_paste)
-        self.url_entry.bind("<Control-v>", self._on_url_paste)
-        self.url_entry.bind("<Control-V>", self._on_url_paste)
-        self.url_entry.bind("<Shift-Insert>", self._on_url_paste)
         self.url_entry.bind("<Button-2>", self._show_url_context_menu)
         self.url_entry.bind("<Button-3>", self._show_url_context_menu)
 
@@ -422,6 +444,25 @@ class WebsiteCopierCtk:
             self.log_message(f"[ERROR] {title}: {message}")
 
     # --- Queue polling (thread-safe) ---
+
+    def on_scan_item(
+        self,
+        *,
+        is_directory: bool,
+        path: str,
+        url: str,
+        file_name: str = "",
+        size: str = "",
+        file_type: str = "",
+        full_path: str = "",
+    ) -> None:
+        """Backend hook — called from background thread when an item is found."""
+        if not self.is_scanning:
+            return
+        self.scan_item_buffer.put(
+            (is_directory, path, url, file_name, size, file_type, full_path)
+        )
+        self.window.after(0, self._schedule_flush)
 
     def _schedule_flush(self) -> None:
         """Schedule a deferred flush of scan_item_buffer if not already pending."""
@@ -513,47 +554,46 @@ class WebsiteCopierCtk:
     # --- Stub methods (implemented in later Tasks) ---
 
     def _build_filters_row(self) -> None:
+        # ── Row 1: action buttons ──────────────────────────────────────────
         self._ctrl_row_frame = ctk.CTkFrame(self.window, fg_color="transparent")
-        self._ctrl_row_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(4, 0))
+        self._ctrl_row_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(6, 0))
         self._ctrl_row_frame.grid_columnconfigure(0, weight=1)
 
-        filters_frame = ctk.CTkFrame(self._ctrl_row_frame, fg_color="transparent")
-        filters_frame.grid(row=0, column=0, sticky="ew")
+        # ── Row 2: Types label + checkboxes + type-action buttons ──────────
+        types_row = ctk.CTkFrame(self.window, fg_color="transparent")
+        types_row.grid(row=2, column=0, sticky="ew", padx=10, pady=(4, 0))
+        types_row.grid_columnconfigure(2, weight=1)   # checkboxes column expands
+
+        _s = dict(                                    # shared small-button style
+            fg_color=("gray80", "gray25"),
+            text_color=("gray10", "gray90"),
+            hover_color=("gray70", "gray35"),
+            height=28,
+            font=ctk.CTkFont(size=12),
+        )
+
+        ctk.CTkLabel(
+            types_row, text="Types:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=(0, 6))
+
+        type_btns = ctk.CTkFrame(types_row, fg_color="transparent")
+        type_btns.grid(row=0, column=1, sticky="w", padx=(0, 8))
+        ctk.CTkButton(type_btns, text="✓ All", command=self.select_all_types,  width=68, **_s).pack(side="left", padx=(0, 4))
+        ctk.CTkButton(type_btns, text="✗ All", command=self.deselect_all_types, width=68, **_s).pack(side="left")
 
         self.filters_container = ctk.CTkScrollableFrame(
-            filters_frame,
-            height=70,
+            types_row,
+            height=38,
             orientation="horizontal",
             fg_color="transparent",
         )
-        self.filters_container.pack(fill="x")
-
-        type_actions = ctk.CTkFrame(filters_frame, fg_color="transparent")
-        type_actions.pack(fill="x", pady=(4, 0))
-
-        ctk.CTkButton(
-            type_actions,
-            text="Select All Types",
-            fg_color=("gray80", "gray25"),
-            text_color=("gray10", "gray90"),
-            hover_color=("gray70", "gray35"),
-            command=self.select_all_types,
-            width=140,
-        ).pack(side="left", padx=(0, 6))
-
-        ctk.CTkButton(
-            type_actions,
-            text="Deselect All Types",
-            fg_color=("gray80", "gray25"),
-            text_color=("gray10", "gray90"),
-            hover_color=("gray70", "gray35"),
-            command=self.deselect_all_types,
-            width=150,
-        ).pack(side="left")
+        self.filters_container.grid(row=0, column=2, sticky="ew")
+        self._bind_hscroll_wheel(self.filters_container)
 
     def _build_filetree(self) -> None:
         outer = ctk.CTkFrame(self.window, fg_color="transparent")
-        outer.grid(row=2, column=0, sticky="nsew", padx=10, pady=(4, 0))
+        outer.grid(row=3, column=0, sticky="nsew", padx=10, pady=(4, 0))
         outer.grid_columnconfigure(0, weight=1)
         outer.grid_rowconfigure(1, weight=1)
 
@@ -574,10 +614,15 @@ class WebsiteCopierCtk:
             corner_radius=8,
         )
         self.tree_scroll_frame.grid(row=1, column=0, sticky="nsew")
+        self.tree_scroll_frame.bind("<Button-2>", self.show_context_menu)
+        self.tree_scroll_frame.bind("<Button-3>", self.show_context_menu)
+        self.window.bind("<Control-a>", lambda _e: self.select_all())
+        self.window.bind("<Command-a>", lambda _e: self.select_all())
 
         # Runtime state for view layer
         self._visible_nodes: list[str] = []
         self._row_widgets: dict[str, RowWidget] = {}
+        self._last_visible: list[str] = []
 
     def _rebuild_visible(self) -> None:
         """Recompute self._visible_nodes from data model (DFS, respects expanded/hidden)."""
@@ -608,19 +653,47 @@ class WebsiteCopierCtk:
             if node_id not in new_ids:
                 self._row_widgets.pop(node_id).destroy()
 
-        # Repack all rows in correct order
-        for widget in self.tree_scroll_frame.winfo_children():
-            widget.pack_forget()
-
-        for node_id in self._visible_nodes:
-            node = self.tree_nodes[node_id]
-            depth = self._node_depth(node_id)
-            if node_id not in self._row_widgets:
+        prev = self._last_visible
+        # Append-only optimisation: if the existing rows are still a prefix of
+        # the new list (no reordering), just pack the new rows at the end.
+        # This prevents the pack_forget→repack flash during scanning.
+        if (
+            len(self._visible_nodes) >= len(prev)
+            and self._visible_nodes[: len(prev)] == prev
+            and all(nid in self._row_widgets for nid in prev)
+        ):
+            for node_id in self._visible_nodes[len(prev) :]:
+                node = self.tree_nodes[node_id]
+                depth = self._node_depth(node_id)
                 self._row_widgets[node_id] = RowWidget(
                     self.tree_scroll_frame, self, node, depth
                 )
-            else:
-                self._row_widgets[node_id].frame.pack(fill="x", padx=4, pady=1)
+        else:
+            # Full repack needed (expand/collapse, filter, sort, restore)
+            for row in list(self._row_widgets.values()):
+                row.frame.pack_forget()
+            for node_id in self._visible_nodes:
+                node = self.tree_nodes[node_id]
+                depth = self._node_depth(node_id)
+                if node_id not in self._row_widgets:
+                    self._row_widgets[node_id] = RowWidget(
+                        self.tree_scroll_frame, self, node, depth
+                    )
+                else:
+                    self._row_widgets[node_id].frame.pack(fill="x", padx=4, pady=1)
+
+        self._last_visible = list(self._visible_nodes)
+
+    def _schedule_tree_update(self) -> None:
+        """Debounce _rebuild_visible + _sync_rows to avoid O(n²) during bulk add."""
+        if not self._tree_update_pending:
+            self._tree_update_pending = True
+            self.window.after(50, self._do_tree_update)
+
+    def _do_tree_update(self) -> None:
+        self._tree_update_pending = False
+        self._rebuild_visible()
+        self._sync_rows()
 
     def _node_depth(self, node_id: str) -> int:
         depth = 0
@@ -642,10 +715,7 @@ class WebsiteCopierCtk:
         node = self.tree_nodes.get(node_id)
         if node is None:
             return
-        if node.kind == "folder":
-            self._on_chevron_click(node_id)
-        else:
-            self.toggle_check(node_id)
+        self.toggle_check(node_id)
 
     def _on_chevron_click(self, node_id: str) -> None:
         node = self.tree_nodes.get(node_id)
@@ -660,19 +730,23 @@ class WebsiteCopierCtk:
 
     def _build_progress_section(self) -> None:
         progress_frame = ctk.CTkFrame(self.window, fg_color="transparent")
-        progress_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=(4, 0))
+        progress_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(6, 2))
         progress_frame.grid_columnconfigure(0, weight=1)
 
-        self.progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.progress_bar = ctk.CTkProgressBar(progress_frame, height=14, corner_radius=6)
         self.progress_bar.set(0)
-        self.progress_bar.grid(row=0, column=0, sticky="ew")
+        self.progress_bar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
 
-        self.progress_label = ctk.CTkLabel(progress_frame, text="")
-        self.progress_label.grid(row=1, column=0, sticky="w")
+        self.progress_label = ctk.CTkLabel(
+            progress_frame, text="",
+            font=ctk.CTkFont(size=13),
+            anchor="w",
+        )
+        self.progress_label.grid(row=1, column=0, sticky="ew")
 
     def _build_panels(self) -> None:
         self.panels_notebook = ctk.CTkTabview(self.window, height=180)
-        self.panels_notebook.grid(row=4, column=0, sticky="ew", padx=10, pady=(4, 10))
+        self.panels_notebook.grid(row=5, column=0, sticky="ew", padx=10, pady=(4, 10))
         self._panels_widget = self.panels_notebook  # toggle_panels 用
 
         downloads_tab = self.panels_notebook.add("Downloads")
@@ -694,32 +768,49 @@ class WebsiteCopierCtk:
         self.log_text.pack(fill="both", expand=True)
 
     def _build_download_controls(self) -> None:
+        _s = dict(
+            fg_color=("gray80", "gray25"),
+            text_color=("gray10", "gray90"),
+            hover_color=("gray70", "gray35"),
+            height=30,
+        )
+
+        # Left side of row 1: Select All / Deselect All (file tree)
+        sel_frame = ctk.CTkFrame(self._ctrl_row_frame, fg_color="transparent")
+        sel_frame.grid(row=0, column=0, sticky="w")
+        ctk.CTkButton(sel_frame, text="Select All",   command=self.select_all,   width=100, **_s).pack(side="left", padx=(0, 4))
+        ctk.CTkButton(sel_frame, text="Deselect All", command=self.deselect_all, width=110, **_s).pack(side="left")
+
+        # Right side of row 1: download controls
         controls = ctk.CTkFrame(self._ctrl_row_frame, fg_color="transparent")
         controls.grid(row=0, column=1, sticky="e", padx=(10, 0))
 
         self.download_btn = ctk.CTkButton(
-            controls, text="Download Selected", command=self.download_selected
+            controls, text="⬇ Download Selected", command=self.download_selected,
+            height=30,
         )
-        self.download_btn.grid(row=0, column=0, padx=4)
+        self.download_btn.grid(row=0, column=0, padx=(0, 4))
 
         self.pause_btn = ctk.CTkButton(
-            controls, text="Pause",
+            controls, text="⏸ Pause",
             fg_color=("gray70", "gray30"),
             hover_color=("gray60", "gray40"),
             command=self.toggle_pause,
             state="disabled",
+            height=30,
         )
-        self.pause_btn.grid(row=0, column=1, padx=4)
+        self.pause_btn.grid(row=0, column=1, padx=(0, 4))
 
         self.path_btn = ctk.CTkButton(
-            controls, text="Choose Folder",
+            controls, text="📁 Folder",
             fg_color=("gray70", "gray30"),
             hover_color=("gray60", "gray40"),
             command=self.choose_download_path,
+            height=30,
         )
-        self.path_btn.grid(row=0, column=2, padx=4)
+        self.path_btn.grid(row=0, column=2, padx=(0, 8))
 
-        ctk.CTkLabel(controls, text="Threads").grid(row=0, column=3, padx=(12, 4))
+        ctk.CTkLabel(controls, text="Threads", font=ctk.CTkFont(size=13)).grid(row=0, column=3, padx=(0, 4))
 
         self.threads_var = tk.StringVar(value="5")
         self.threads_combo = ctk.CTkOptionMenu(
@@ -728,19 +819,18 @@ class WebsiteCopierCtk:
             variable=self.threads_var,
             command=self.update_thread_count,
             width=70,
+            height=30,
         )
-        self.threads_combo.grid(row=0, column=4)
+        self.threads_combo.grid(row=0, column=4, padx=(0, 8))
 
         self.panels_visible = True
         self.toggle_panels_btn = ctk.CTkButton(
             controls, text="Hide Panels",
-            fg_color=("gray80", "gray25"),
-            text_color=("gray10", "gray90"),
-            hover_color=("gray70", "gray35"),
             command=self.toggle_panels,
-            width=110,
+            width=100,
+            **_s,
         )
-        self.toggle_panels_btn.grid(row=0, column=5, padx=(10, 0))
+        self.toggle_panels_btn.grid(row=0, column=5)
 
     def focus_search(self, event=None) -> None:
         try:
@@ -983,6 +1073,8 @@ class WebsiteCopierCtk:
         if self.is_scanning:
             return
         self._drain_queues()
+        self._tree_update_pending = False
+        self._last_visible = []
 
         # Clear data model
         self.tree_nodes.clear()
@@ -1014,14 +1106,39 @@ class WebsiteCopierCtk:
         self.progress_label.configure(text="")
         self._set_status("Ready", "#059669")
 
+    def on_scan_started(self, *, url: str = "") -> None:
+        self.scan_btn.configure(text="Stop Scan")
+        self.scan_pause_btn.configure(state="normal")
+        self.progress_bar.set(0)
+        self.progress_label.configure(text="Scanning…")
+        self._set_status("Scanning", "#B45309")
+
+    def on_scan_progress(self, *, scanned_urls: int = 0, total_urls: int = 0) -> None:
+        self.window.after(0, lambda: self.update_progress(scanned_urls, total_urls))
+
+    def on_scan_finished(self, *, stopped: bool = False) -> None:
+        def _finish():
+            self.scan_btn.configure(text="Scan")
+            self.scan_pause_btn.configure(text="Pause Scan", state="disabled")
+            if stopped:
+                self.progress_bar.set(0)
+                self.progress_label.configure(text="Scan stopped")
+                self._set_status("Stopped", "#B91C1C")
+            else:
+                self.progress_bar.set(1)
+                n = len(self.files_dict)
+                self.progress_label.configure(text=f"Done — {n} files found")
+                self._set_status("Ready", "#059669")
+        self.window.after(0, _finish)
+
     def update_progress(self, scanned: int, total: int) -> None:
         """Update the scan progress bar (0–100%)."""
         if total <= 0:
             self.progress_bar.set(0)
             return
-        pct = (scanned / total) * 100
-        self.progress_bar.set(pct / 100)
-        self.progress_label.configure(text=f"Scan: {scanned}/{total}")
+        pct = scanned / total
+        self.progress_bar.set(pct)
+        self.progress_label.configure(text=f"Scanning… {scanned}/{total}  ({pct:.0%})")
 
     def add_folder(self, dir_path: str, url: str) -> str:
         """Ensure all path segments exist as folder nodes; return leaf node_id."""
@@ -1056,8 +1173,7 @@ class WebsiteCopierCtk:
                     existing_id = node_id
             parent_id = existing_id
 
-        self._rebuild_visible()
-        self._sync_rows()
+        self._schedule_tree_update()
         return parent_id
 
     def add_file(self, dir_path: str, url: str, file_name: str, size, file_type: str, full_path: str) -> None:
@@ -1121,8 +1237,7 @@ class WebsiteCopierCtk:
         else:
             self.tree_roots.append(node_id)
 
-        self._rebuild_visible()
-        self._sync_rows()
+        self._schedule_tree_update()
 
     def _file_icon_and_group(self, file_name: str, file_type: str | None):
         ext = normalize_extension(file_name)
@@ -1309,6 +1424,28 @@ class WebsiteCopierCtk:
         for var in self.file_types.values():
             var.set(False)
 
+    def _bind_hscroll_wheel(self, widget) -> None:
+        """讓 widget 的滾輪事件橫向捲動 filters_container（平滑版）。"""
+        try:
+            canvas = self.filters_container._parent_canvas
+        except AttributeError:
+            return
+
+        # 每個 scroll unit = 20px，讓滾動距離合理
+        canvas.configure(xscrollincrement=20)
+
+        def _scroll(event):
+            delta = getattr(event, "delta", 0)
+            if not delta:
+                return
+            # macOS trackpad delta 很小 (1–5)；滑鼠滾輪約 120
+            # 統一換算為 unit 數，最少 1
+            units = max(1, abs(delta) // 3)
+            canvas.xview_scroll(-units if delta > 0 else units, "units")
+
+        widget.bind("<MouseWheel>", _scroll, add="+")
+        widget.bind("<Shift-MouseWheel>", _scroll, add="+")
+
     def _add_file_type_filter(self, ext: str) -> None:
         if not hasattr(self, "filters_container"):
             return
@@ -1325,6 +1462,7 @@ class WebsiteCopierCtk:
             offvalue=False,
         )
         cb.pack(side="left", padx=4, pady=4)
+        self._bind_hscroll_wheel(cb)
         var.trace_add("write", lambda *_: self._on_type_filter_changed(ext))
         self.file_type_widgets[ext] = cb
 
