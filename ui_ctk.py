@@ -805,152 +805,53 @@ class WebsiteCopierCtk:
 
     # --- Treeview interaction helpers ---
 
-    def _all_tree_items(self):
-        out = []
-        stack = list(self.tree.get_children(""))
-        while stack:
-            item = stack.pop()
-            out.append(item)
-            stack.extend(self.tree.get_children(item))
+    def _all_tree_items(self) -> list[str]:
+        """Return all node_ids in DFS order."""
+        out: list[str] = []
+        def _walk(node_id: str) -> None:
+            out.append(node_id)
+            node = self.tree_nodes.get(node_id)
+            if node:
+                for child_id in node.children:
+                    _walk(child_id)
+        for root_id in self.tree_roots:
+            _walk(root_id)
         return out
 
-    def _focused_tree_item(self):
-        try:
-            item = self.tree.focus()
-            if item and self.tree.exists(item):
-                return item
-            selected = self.tree.selection()
-            if selected:
-                return selected[0]
-        except tk.TclError:
-            return ""
-        return ""
-
-    def _strip_checkmark(self, text: str) -> str:
-        if text.startswith(self.checkbox_checked):
-            return text[len(self.checkbox_checked):]
-        return text
-
-    def _set_item_checked_visual(self, item: str, checked: bool) -> None:
-        try:
-            text = self.tree.item(item, "text")
-        except tk.TclError:
+    def toggle_check(self, node_id: str, force_check=None, _skip_children: bool = False) -> None:
+        node = self.tree_nodes.get(node_id)
+        if node is None:
             return
-        raw = self._strip_checkmark(text or "")
-        display = f"{self.checkbox_checked}{raw}" if checked else raw
-        try:
-            self.tree.item(item, text=display)
-        except tk.TclError:
-            return
+        new_checked = (not node.checked) if force_check is None else bool(force_check)
+        node.checked = new_checked
 
-    def toggle_check(self, item, force_check=None):
-        try:
-            if not self.tree.exists(item):
-                return
-            tags = list(self.tree.item(item, "tags"))
-        except tk.TclError:
-            return
-
-        is_checked = "checked" in tags
-        new_checked = (not is_checked) if force_check is None else bool(force_check)
-
-        if "file" in tags:
-            full_path = self.tree.set(item, "full_path")
-            if full_path:
-                if new_checked:
-                    self.checked_items.add(full_path)
-                else:
-                    self.checked_items.discard(full_path)
-
-        if new_checked and "checked" not in tags:
-            tags.append("checked")
-        if (not new_checked) and "checked" in tags:
-            tags.remove("checked")
-        self.tree.item(item, tags=tuple(tags))
-        self._set_item_checked_visual(item, new_checked)
-
-        if "folder" in tags:
-            for child in self.tree.get_children(item):
-                self.toggle_check(child, force_check=new_checked)
-
-    def on_tree_click(self, event):
-        try:
-            item = self.tree.identify("item", event.x, event.y)
-            if not item:
-                return
-            self.drag_anchor_item = item
-            self.tree.focus(item)
-            element = self.tree.identify_element(event.x, event.y)
-            if "indicator" in element:
-                return
-            modifier_mask = 0x0001 | 0x0004 | 0x0008 | 0x0010 | 0x0080
-            if event.state & modifier_mask:
-                return
-            if self.tree.identify_column(event.x) == "#0":
-                self.toggle_check(item)
-        except tk.TclError:
-            return
-
-    def on_tree_drag_select(self, event):
-        try:
-            if not self.drag_anchor_item:
-                return
-            target = self.tree.identify_row(event.y)
-            if not target:
-                return
-            items = self._all_tree_items()
-            if self.drag_anchor_item not in items or target not in items:
-                return
-            a = items.index(self.drag_anchor_item)
-            b = items.index(target)
-            lo, hi = (a, b) if a <= b else (b, a)
-            self.tree.selection_set(items[lo: hi + 1])
-        except tk.TclError:
-            return
-
-    def on_tree_space(self, _event=None):
-        item = self._focused_tree_item()
-        if item:
-            self.toggle_check(item)
-            return "break"
-        return None
-
-    def on_tree_enter(self, _event=None):
-        item = self._focused_tree_item()
-        if not item:
-            return None
-        try:
-            tags = self.tree.item(item, "tags")
-            if "folder" in tags:
-                self.tree.item(item, open=not bool(self.tree.item(item, "open")))
+        if node.kind == "file" and node.full_path:
+            if new_checked:
+                self.checked_items.add(node.full_path)
             else:
-                self.toggle_check(item)
-        except tk.TclError:
-            return None
-        return "break"
+                self.checked_items.discard(node.full_path)
 
-    def _on_tree_select_all(self, _event=None):
-        self.select_all()
-        return "break"
+        row = self._row_widgets.get(node_id)
+        if row:
+            row.set_checked(new_checked)
 
-    def show_context_menu(self, event):
+        if node.kind == "folder" and not _skip_children:
+            for child_id in node.children:
+                self.toggle_check(child_id, force_check=new_checked)
+
+    def show_context_menu(self, event) -> None:
         try:
-            item = self.tree.identify_row(event.y)
-            if item:
-                self.tree.focus(item)
-                self.tree.selection_set(item)
             self.context_menu.tk_popup(event.x_root, event.y_root)
         finally:
             self.context_menu.grab_release()
-        return "break"
 
-    def select_all(self):
-        for item in self._all_tree_items():
-            self.toggle_check(item, force_check=True)
+    def select_all(self) -> None:
+        for node_id in list(self.tree_nodes):
+            self.toggle_check(node_id, force_check=True, _skip_children=True)
 
-    def deselect_all(self):
-        for item in self._all_tree_items():
-            self.toggle_check(item, force_check=False)
+    def deselect_all(self) -> None:
+        for node_id in list(self.tree_nodes):
+            self.toggle_check(node_id, force_check=False, _skip_children=True)
 
     def expand_all(self, parent=""):
         for item in self.tree.get_children(parent):
