@@ -1185,11 +1185,11 @@ class WebsiteCopier:
         try:
             new_count = int(new_count_str)
             if 1 <= new_count <= 10:
+                old_executor = self.executor
                 self.max_workers = new_count
-                # Re-create the executor with the new worker count
-                # Shut down the old one to release resources
-                self.executor.shutdown(wait=False, cancel_futures=True)
                 self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+                # Shutdown old executor after new one is ready
+                old_executor.shutdown(wait=True, cancel_futures=False)
         except (ValueError, TypeError):
             pass
 

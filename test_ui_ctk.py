@@ -89,7 +89,10 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
         app.window.after(0, app.window.destroy)
         app.run()
-        self.assertTrue(hasattr(app, "tree"))
+        # CTk version uses custom FileTree components, not ttk.Treeview
+        self.assertTrue(hasattr(app, "tree_nodes"))
+        self.assertTrue(hasattr(app, "tree_roots"))
+        self.assertTrue(hasattr(app, "tree_scroll_frame"))
         self.assertTrue(hasattr(app, "search_var"))
 
     def test_search_var_traces(self):
