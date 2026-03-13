@@ -66,35 +66,19 @@
   - 點擊檔案類型勾選框選擇/取消選擇
   - 使用全選/取消全選按鈕快速操作
 
+## UI 架構
+
+IndexRipper 使用 **CustomTkinter** 作為 UI 框架，提供現代外觀與深色/淺色主題切換。
+
+檔案樹採用自訂 `FileTree` 元件（基於 `CTkScrollableFrame`），以 emoji 圖示取代像素圖，支援：
+- 📁 資料夾 / 🖼️ 圖片 / 📄 文件 / 🗜️ 壓縮檔 / 💻 程式碼 / 🎵 音訊 / 🎬 影片 / 📝 文字 / ⚙️ 二進位
+
 ## 系統需求
 
-- Python 3.10 或更高版本
+- Python **3.11** 或更高版本
 - 支援 Windows、macOS、Linux 系統
 
-### Windows 使用者
-
-- Python 安裝時請勾選 "tcl/tk and IDLE"
-- 如果沒有勾選，可以重新執行安裝程式並修改
-
-### macOS 使用者
-
-```bash
-# 使用 Homebrew 安裝 Python 和 Tkinter
-brew install python-tk@3.10
-```
-
-### Linux 使用者
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install python3-tk
-
-# Fedora
-sudo dnf install python3-tkinter
-
-# Arch Linux
-sudo pacman -S tk
-```
+> CustomTkinter 內建 Tcl/Tk，**不需要**額外安裝系統 Tkinter 套件。
 
 ## 安裝依賴
 
@@ -104,37 +88,25 @@ sudo pacman -S tk
 # 安裝 uv（僅需一次）
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 安裝所需套件
-uv pip install -r requirements.txt
+# 安裝所需套件（讀取 pyproject.toml）
+uv sync
 ```
 
 ## 執行方式
 
 ```bash
-# 使用 uv 執行
+# 使用 uv 執行（CustomTkinter UI）
 uv run python index_ripper.py
-
-# 執行 ttkbootstrap UI 入口
-uv run python index_ripper_ttkb.py
 
 # 快速無互動 smoke 檢查
 uv run python index_ripper.py --smoke
 
-# UI smoke 檢查（需要 tkinter）
+# UI smoke 檢查
 uv run python index_ripper.py --ui-smoke
-
-# ttkbootstrap UI smoke 檢查
-uv run python index_ripper_ttkb.py --ui-smoke
 
 # 可重現的 self-test（不依賴真網路）
 uv run python index_ripper.py --self-test
-
-# ttkbootstrap 入口的可重現 self-test
-uv run python index_ripper_ttkb.py --self-test
 ```
-
-`index_ripper_ttkb.py --ui-smoke` 會刻意使用最小且安全的 UI 建立路徑，
-讓不同環境即使缺少部分 Pillow Tk 影像橋接能力，也能穩定驗證 Tk 視窗可啟動。
 
 ## 下載已編譯執行檔
 
@@ -191,21 +163,21 @@ chmod +x "/path/to/IndexRipper.app/Contents/MacOS/IndexRipper"
 Windows（PowerShell）：
 
 ```powershell
-uv pip install -r requirements.txt pyinstaller pillow
+uv pip install pyinstaller
 uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper `
-  --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+  --collect-all customtkinter index_ripper.py
 ```
 
 macOS/Linux（bash）：
 
 ```bash
-uv pip install -r requirements.txt pyinstaller pillow
+uv pip install pyinstaller
 # macOS .app
 uv run pyinstaller -F --windowed --name=IndexRipper \
-  --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
+  --collect-all customtkinter --icon=app.png index_ripper.py
 # Linux 單一執行檔
 uv run pyinstaller --onefile --windowed --name=IndexRipper \
-  --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
+  --collect-all customtkinter --icon=app.png index_ripper.py
 ```
 
 ## 注意事項
@@ -223,13 +195,16 @@ MIT License
 
 ### 1. tkinter 相關錯誤
 
-如果遇到 "No module named '_tkinter'" 錯誤：
+CustomTkinter 內建 Tcl/Tk，通常不需要額外安裝。若仍出現問題：
 
-- Windows：重新安裝 Python，確保勾選 "tcl/tk and IDLE"
-- macOS：執行 `brew install python-tk@3.10`
-- Linux：安裝對應發行版的 tkinter 套件
+- macOS（Homebrew Python）：`brew install python-tk@3.11`
+- Linux：`sudo apt-get install python3-tk`（Ubuntu/Debian）
 
 ### 2. 畫面顯示問題
 
 - 如果介面顯示異常，可能是 DPI 縮放問題
 - Windows 用戶可以右鍵點擊 Python.exe → 內容 → 相容性 → 變更高 DPI 設定，並啟用高 DPI 縮放覆寫
+
+### 3. 深色/淺色主題
+
+IndexRipper 預設跟隨系統外觀設定（system），支援 macOS 與 Windows 的深色模式自動切換。

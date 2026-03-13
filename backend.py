@@ -14,6 +14,15 @@ from bs4 import BeautifulSoup
 
 from app_utils import is_url_in_scope
 
+def _cleanup_partial_file(file_path: str) -> None:
+    """Remove partial download file if it exists."""
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except OSError:
+        pass  # Best-effort cleanup
+
+
 
 class Backend:
     """Handles the backend logic for scanning and downloading."""
@@ -184,6 +193,7 @@ class Backend:
                 href = link.get("href")
                 if not href or href in [".", "..", "/"] or href.startswith("?"):
                     continue
+                link_text = link.get_text(strip=True)
 
                 full_url = urljoin(url, href)
                 if not full_url or not is_url_in_scope(base_url, full_url):
@@ -196,7 +206,8 @@ class Backend:
 
                 final_url = f"{parsed_full.scheme}://{parsed_full.netloc}{path}"
 
-                if href.endswith("/"):
+                is_directory_hint = href.endswith("/") or link_text.endswith("/")
+                if is_directory_hint:
                     if not final_url.endswith("/"):
                         final_url += "/"
                 else:
@@ -303,6 +314,7 @@ class Backend:
                     self.ui_manager.pause_event.wait()
                     if cancel_event is not None and cancel_event.is_set():
                         self.ui_manager.log_message(f"[Download] Canceled: {file_name}")
+                        _cleanup_partial_file(file_path)
                         try:
                             self.ui_manager.update_download_status(
                                 file_path, "Canceled"
@@ -312,6 +324,7 @@ class Backend:
                         return False
                     if self.should_stop:
                         self._log(f"[Download] Stopping download for {file_name}")
+                        _cleanup_partial_file(file_path)
                         return False
                     if not data:
                         break
@@ -331,6 +344,7 @@ class Backend:
 
         except requests.exceptions.RequestException as ex:
             self._log(f"[Download] Error downloading {file_name}: {str(ex)}")
+            _cleanup_partial_file(file_path)
             try:
                 self.ui_manager.update_download_status(file_path, "Failed")
                 self.ui_manager.log_message(f"[Download] Error: {file_name} - {ex}")
@@ -339,6 +353,7 @@ class Backend:
             return False
         except IOError as ex:
             self._log(f"[Download] File error for {file_name}: {str(ex)}")
+            _cleanup_partial_file(file_path)
             try:
                 self.ui_manager.update_download_status(file_path, "Failed")
                 self.ui_manager.log_message(

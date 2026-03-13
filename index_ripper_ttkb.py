@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 
 
@@ -15,6 +16,25 @@ if "--self-test" in sys.argv:
         f"SELF_TEST_OK total={result.total} files={result.files} dirs={result.directories}"
     )
     raise SystemExit(0)
+
+
+def _configure_tk_libraries() -> None:
+    if os.environ.get("TCL_LIBRARY") and os.environ.get("TK_LIBRARY"):
+        return
+
+    for prefix in (sys.base_prefix, sys.prefix):
+        lib_root = os.path.join(prefix, "lib")
+        tcl_library = os.path.join(lib_root, "tcl8.6")
+        tk_library = os.path.join(lib_root, "tk8.6")
+        if os.path.isfile(os.path.join(tcl_library, "init.tcl")) and os.path.isfile(
+            os.path.join(tk_library, "tk.tcl")
+        ):
+            os.environ.setdefault("TCL_LIBRARY", tcl_library)
+            os.environ.setdefault("TK_LIBRARY", tk_library)
+            return
+
+
+_configure_tk_libraries()
 
 
 def main() -> int:

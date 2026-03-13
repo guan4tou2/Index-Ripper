@@ -23,6 +23,26 @@ if "--self-test" in sys.argv:
     )
     raise SystemExit(0)
 
+
+def _configure_tk_libraries() -> None:
+    """Set Tcl/Tk library env vars for uv-managed Python when missing."""
+    if os.environ.get("TCL_LIBRARY") and os.environ.get("TK_LIBRARY"):
+        return
+
+    for prefix in (sys.base_prefix, sys.prefix):
+        lib_root = os.path.join(prefix, "lib")
+        tcl_library = os.path.join(lib_root, "tcl8.6")
+        tk_library = os.path.join(lib_root, "tk8.6")
+        if os.path.isfile(os.path.join(tcl_library, "init.tcl")) and os.path.isfile(
+            os.path.join(tk_library, "tk.tcl")
+        ):
+            os.environ.setdefault("TCL_LIBRARY", tcl_library)
+            os.environ.setdefault("TK_LIBRARY", tk_library)
+            return
+
+
+_configure_tk_libraries()
+
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -42,7 +62,14 @@ from app_utils import (
     shorten_path,
 )
 from settings_store import load_settings, save_settings
-from ui_theme import apply_app_theme, configure_treeview_style, treeview_tag_colors
+from ui_theme import (
+    action_button_style_name,
+    apply_app_theme,
+    configure_action_button_styles,
+    configure_treeview_style,
+    treeview_tag_colors,
+    ui_tokens,
+)
 
 
 class WebsiteCopier:
@@ -62,6 +89,8 @@ class WebsiteCopier:
         self.window.title("Index Ripper")
         self.window.geometry("1200x900")
         self.window.minsize(900, 650)
+        configure_action_button_styles(self.window, ctk, ttk)
+        self.ui_tokens = ui_tokens()
 
         self.backend = Backend(self)
 
@@ -93,25 +122,30 @@ class WebsiteCopier:
         self.window.grid_rowconfigure(1, weight=1)
 
         # --- URL and filter area ---
-        self.top_frame = ctk.CTkFrame(self.window)
+        self.top_frame = ctk.CTkFrame(self.window, corner_radius=14, border_width=1)
         self.top_frame.grid(row=0, column=0, padx=10, pady=(10, 5), sticky="ew")
         self.top_frame.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            self.top_frame,
+            text="Index Ripper Studio",
+            font=ctk.CTkFont(size=20, weight="bold"),
+        ).grid(row=0, column=0, padx=12, pady=(10, 2), sticky="w")
 
         # URL input
         url_input_frame = ctk.CTkFrame(self.top_frame, fg_color="transparent")
-        url_input_frame.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
+        url_input_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
         url_input_frame.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(
             url_input_frame, text="URL:", font=ctk.CTkFont(weight="bold")
         ).grid(row=0, column=0, padx=(0, 5))
         self.url_entry = ctk.CTkEntry(
-            url_input_frame, placeholder_text="https://example.com"
+            url_input_frame, placeholder_text="https://example.com", height=36
         )
         self.url_entry.grid(row=0, column=1, sticky="ew")
 
         # Scan buttons
         scan_buttons_frame = ctk.CTkFrame(self.top_frame, fg_color="transparent")
-        scan_buttons_frame.grid(row=0, column=1, padx=10, pady=5)
+        scan_buttons_frame.grid(row=1, column=1, padx=10, pady=5)
 
         self.status_chip = ctk.CTkLabel(
             self.top_frame,
@@ -120,31 +154,38 @@ class WebsiteCopier:
             text_color=("#14532D", "#DCFCE7"),
             corner_radius=12,
             padx=10,
-            pady=2,
+            pady=4,
         )
-        self.status_chip.grid(row=0, column=2, padx=(0, 10), pady=5, sticky="e")
+        self.status_chip.grid(row=0, column=2, padx=(0, 10), pady=8, sticky="e")
 
-        self.scan_btn = ctk.CTkButton(
-            scan_buttons_frame, text="Scan", command=self.start_scan
+        self.scan_btn = ttk.Button(
+            scan_buttons_frame,
+            text="Scan",
+            command=self.start_scan,
+            style=action_button_style_name("primary"),
         )
         self.scan_btn.pack(side="left", padx=5)
 
-        self.scan_pause_btn = ctk.CTkButton(
+        self.scan_pause_btn = ttk.Button(
             scan_buttons_frame,
             text="Pause Scan",
             command=self.toggle_scan_pause,
             state="disabled",
+            style=action_button_style_name("secondary"),
         )
         self.scan_pause_btn.pack(side="left", padx=5)
 
-        self.clear_scan_btn = ctk.CTkButton(
-            scan_buttons_frame, text="Clear", command=self.clear_scan_results
+        self.clear_scan_btn = ttk.Button(
+            scan_buttons_frame,
+            text="Clear",
+            command=self.clear_scan_results,
+            style=action_button_style_name("danger"),
         )
         self.clear_scan_btn.pack(side="left", padx=5)
 
         # --- File type filter area ---
-        filter_frame = ctk.CTkFrame(self.top_frame)
-        filter_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        filter_frame = ctk.CTkFrame(self.top_frame, corner_radius=10)
+        filter_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
         filter_frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
@@ -172,7 +213,7 @@ class WebsiteCopier:
         ).pack(side="left", padx=2)
 
         # --- File list area ---
-        self.tree_frame = ctk.CTkFrame(self.window)
+        self.tree_frame = ctk.CTkFrame(self.window, corner_radius=14, border_width=1)
         self.tree_frame.grid(row=1, column=0, padx=10, pady=5, sticky="nsew")
         self.tree_frame.grid_rowconfigure(1, weight=1)
         self.tree_frame.grid_columnconfigure(0, weight=1)
@@ -186,7 +227,11 @@ class WebsiteCopier:
         self.search_var = ctk.StringVar()
         self.search_var.trace_add("write", self.on_search_filter_changed)
         self.search_entry = ctk.CTkEntry(
-            search_frame, textvariable=self.search_var, state="disabled"
+            search_frame,
+            textvariable=self.search_var,
+            state="disabled",
+            placeholder_text="Filter by file or folder name...",
+            height=32,
         )
         self.search_entry.grid(row=0, column=1, sticky="ew")
         self.full_tree_backup = {}
@@ -195,7 +240,7 @@ class WebsiteCopier:
 
         self.tree = ttk.Treeview(
             self.tree_frame,
-            selectmode="none",
+            selectmode="browse",
             show=("tree", "headings"),
             style="Treeview",
         )
@@ -211,7 +256,7 @@ class WebsiteCopier:
         self.tree.heading("size", text="Size", command=lambda: self.sort_tree("size"))
         self.tree.heading("type", text="Type", command=lambda: self.sort_tree("type"))
 
-        self.tree.column("#0", minwidth=400, width=600)
+        self.tree.column("#0", minwidth=300, width=600, stretch=True)
         self.tree.column("size", width=120, anchor="center")
         self.tree.column("type", width=200, anchor="center")
 
@@ -237,36 +282,49 @@ class WebsiteCopier:
         self.folders = {}
 
         self.scrollbar = ctk.CTkScrollbar(self.tree_frame, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=self.scrollbar.set)
+        self.h_scrollbar = ctk.CTkScrollbar(
+            self.tree_frame, orientation="horizontal", command=self.tree.xview
+        )
+        self.tree.configure(
+            yscrollcommand=self.scrollbar.set, xscrollcommand=self.h_scrollbar.set
+        )
 
         self.tree.grid(row=1, column=0, sticky="nsew")
         self.scrollbar.grid(row=1, column=1, sticky="ns")
+        self.h_scrollbar.grid(row=2, column=0, sticky="ew")
 
         self.tree.bind("<Button-1>", self.on_tree_click)
+        self.tree.bind("<space>", self.on_tree_space)
+        self.tree.bind("<Return>", self.on_tree_enter)
+        self.tree.bind("<Control-a>", self.on_tree_select_all)
+        self.tree.bind("<Command-a>", self.on_tree_select_all)
 
         # --- Download control area ---
-        control_frame = ctk.CTkFrame(self.window)
+        control_frame = ctk.CTkFrame(self.window, corner_radius=14, border_width=1)
         control_frame.grid(row=2, column=0, padx=10, pady=5, sticky="ew")
 
-        self.download_btn = ctk.CTkButton(
+        self.download_btn = ttk.Button(
             control_frame,
             text="Download Selected Files",
             command=self.download_selected,
+            style=action_button_style_name("success"),
         )
         self.download_btn.pack(side="left", padx=5, pady=5)
 
-        self.pause_btn = ctk.CTkButton(
+        self.pause_btn = ttk.Button(
             control_frame,
             text="Pause Download",
             command=self.toggle_pause,
             state="disabled",
+            style=action_button_style_name("secondary"),
         )
         self.pause_btn.pack(side="left", padx=5, pady=5)
 
-        self.path_btn = ctk.CTkButton(
+        self.path_btn = ttk.Button(
             control_frame,
             text="Choose Download Location",
             command=self.choose_download_path,
+            style=action_button_style_name("secondary"),
         )
         self.path_btn.pack(side="left", padx=5, pady=5)
 
@@ -280,21 +338,22 @@ class WebsiteCopier:
             values=[str(i) for i in range(1, 11)],
             variable=self.threads_var,
             command=self.update_thread_count,
+            **self.ui_tokens["option_menu"],
         )
         threads_option_menu.pack(side="left", padx=5)
 
         # Toggle button to show/hide bottom panels (Downloads/Logs)
         self.panels_visible = True
-        self.toggle_panels_btn = ctk.CTkButton(
+        self.toggle_panels_btn = ttk.Button(
             control_frame,
             text="Hide Panels",
-            width=110,
             command=self.toggle_panels,
+            style=action_button_style_name("secondary"),
         )
         self.toggle_panels_btn.pack(side="right", padx=5)
 
         # --- Progress bar ---
-        self.progress_frame = ctk.CTkFrame(self.window)
+        self.progress_frame = ctk.CTkFrame(self.window, corner_radius=14, border_width=1)
         self.progress_frame.grid(row=3, column=0, padx=10, pady=(5, 10), sticky="ew")
         self.progress_frame.grid_columnconfigure(0, weight=1)
 
@@ -309,7 +368,9 @@ class WebsiteCopier:
         self.progress_label.grid(row=1, column=0, padx=5, pady=2, sticky="w")
 
         # --- Panels (Downloads + Logs) inside a Tabview ---
-        self.panels_tabview = ctk.CTkTabview(self.window)
+        self.panels_tabview = ctk.CTkTabview(
+            self.window, corner_radius=14, **self.ui_tokens["tabview"]
+        )
         self.panels_tabview.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="ew")
 
         self.panels_tabview.add("Downloads")
@@ -320,7 +381,13 @@ class WebsiteCopier:
         self.downloads_frame.pack(fill="x", expand=False)
 
         logs_tab = self.panels_tabview.tab("Logs")
-        self.log_text = ctk.CTkTextbox(logs_tab, height=80)
+        self.log_text = ctk.CTkTextbox(
+            logs_tab,
+            height=self.ui_tokens["logs"]["height"],
+            font=self.ui_tokens["logs"]["font"],
+            text_color=self.ui_tokens["logs"]["text_color"],
+            fg_color=self.ui_tokens["logs"]["fg_color"],
+        )
         self.log_text.pack(fill="x", expand=False)
         self.log_text.configure(state="disabled")
 
@@ -330,7 +397,9 @@ class WebsiteCopier:
             pass
         
         # Track per-file download UI elements and cancel events
-        self.downloads_panel = DownloadsPanel(self.downloads_frame, ctk, tk, threading)
+        self.downloads_panel = DownloadsPanel(
+            self.downloads_frame, ctk, tk, threading, tokens=self.ui_tokens
+        )
 
         # Load and apply saved settings (panels visibility and active tab)
         self._settings_path = os.path.join(
@@ -407,6 +476,34 @@ class WebsiteCopier:
         except Exception:
             self.log_message(f"[ERROR] {title}: {message}")
 
+    def _set_status(self, text: str, state: str = "ready") -> None:
+        """Set status chip text and style based on scan state."""
+        status_styles = {
+            "ready": {
+                "fg_color": ("#DCFCE7", "#14532D"),
+                "text_color": ("#14532D", "#DCFCE7"),
+            },
+            "scanning": {
+                "fg_color": ("#DBEAFE", "#1E3A8A"),
+                "text_color": ("#1E3A8A", "#DBEAFE"),
+            },
+            "paused": {
+                "fg_color": ("#FEF3C7", "#78350F"),
+                "text_color": ("#78350F", "#FEF3C7"),
+            },
+            "stopping": {
+                "fg_color": ("#FEE2E2", "#7F1D1D"),
+                "text_color": ("#7F1D1D", "#FEE2E2"),
+            },
+        }
+
+        style = status_styles.get(state, status_styles["ready"])
+        self.status_chip.configure(
+            text=text,
+            fg_color=style["fg_color"],
+            text_color=style["text_color"],
+        )
+
     def toggle_panels(self):
         """Show or hide the bottom panels (Downloads/Logs)."""
         if self.panels_visible:
@@ -455,11 +552,11 @@ class WebsiteCopier:
             self.scan_pause_event.clear()
             self.scan_pause_btn.configure(text="Resume Scan")
             self.progress_label.configure(text="Scan paused")
-            self.status_chip.configure(text="Scan Paused")
+            self._set_status("Scan Paused", "paused")
         else:
             self.scan_pause_event.set()
             self.scan_pause_btn.configure(text="Pause Scan")
-            self.status_chip.configure(text="Scanning")
+            self._set_status("Scanning", "scanning")
 
     def filter_file_type(self, file_name):
         """Check if file should be displayed"""
@@ -544,6 +641,9 @@ class WebsiteCopier:
         if not item:
             return
 
+        self.tree.focus(item)
+        self.tree.selection_set(item)
+
         # Identify the specific element clicked
         element = self.tree.identify_element(event.x, event.y)
 
@@ -556,6 +656,43 @@ class WebsiteCopier:
         column = self.tree.identify_column(event.x)
         if column == "#0":  # Only toggle check if name column is clicked
             self.toggle_check(item)
+
+    def _focused_tree_item(self):
+        item = self.tree.focus()
+        if item and self.tree.exists(item):
+            return item
+        selected = self.tree.selection()
+        if selected:
+            candidate = selected[0]
+            if self.tree.exists(candidate):
+                return candidate
+        return ""
+
+    def on_tree_space(self, _event=None):
+        """Toggle checked state for the focused tree item."""
+        item = self._focused_tree_item()
+        if item:
+            self.toggle_check(item)
+            return "break"
+        return None
+
+    def on_tree_enter(self, _event=None):
+        """Expand/collapse folders or toggle files for the focused tree item."""
+        item = self._focused_tree_item()
+        if not item:
+            return None
+
+        tags = self.tree.item(item, "tags")
+        if "folder" in tags:
+            self.tree.item(item, open=not bool(self.tree.item(item, "open")))
+        else:
+            self.toggle_check(item)
+        return "break"
+
+    def on_tree_select_all(self, _event=None):
+        """Select all files in tree when tree widget has focus."""
+        self.select_all()
+        return "break"
 
     def toggle_check(self, item, force_check=None):
         """Toggle item checked status"""
@@ -627,7 +764,7 @@ class WebsiteCopier:
         self.scan_pause_btn.configure(state="normal", text="Pause Scan")
         self.progress_label.configure(text="Scanning website...")
         self.scan_btn.configure(state="normal", text="Stop Scan")
-        self.status_chip.configure(text="Scanning")
+        self._set_status("Scanning", "scanning")
 
         self._cancel_scan_item_flush()
         while not self.scan_item_buffer.empty():
@@ -919,6 +1056,7 @@ class WebsiteCopier:
                 text=f"{file_type} ({count})",
                 variable=var,
                 command=self.apply_filters,
+                **self.ui_tokens["checkbox"],
             )
             chk.grid(row=i // 4, column=i % 4, padx=5, pady=2, sticky="w")
 
@@ -1047,11 +1185,11 @@ class WebsiteCopier:
         try:
             new_count = int(new_count_str)
             if 1 <= new_count <= 10:
+                old_executor = self.executor
                 self.max_workers = new_count
-                # Re-create the executor with the new worker count
-                # Shut down the old one to release resources
-                self.executor.shutdown(wait=False, cancel_futures=True)
                 self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+                # Shutdown old executor after new one is ready
+                old_executor.shutdown(wait=True, cancel_futures=False)
         except (ValueError, TypeError):
             pass
 
@@ -1188,7 +1326,7 @@ class WebsiteCopier:
             self.backend.should_stop = True
             self.scan_btn.configure(text="Stopping...")
             self.scan_btn.configure(state="disabled")
-            self.status_chip.configure(text="Stopping")
+            self._set_status("Stopping", "stopping")
             return
 
         self.backend.should_stop = False
@@ -1199,7 +1337,7 @@ class WebsiteCopier:
             self.download_path = os.path.join(os.getcwd(), "downloads")
 
         self.progress_label.configure(text="Preparing to scan...")
-        self.status_chip.configure(text="Scanning")
+        self._set_status("Scanning", "scanning")
         self.scan_btn.configure(text="Stop Scan")
         self.search_entry.configure(state="disabled")
         self.search_var.set("")
@@ -1216,7 +1354,7 @@ class WebsiteCopier:
                 "text": self.tree.item(item, "text"),
                 "tags": self.tree.item(item, "tags"),
             }
-        self.status_chip.configure(text="Ready")
+        self._set_status("Ready", "ready")
 
     def focus_search(self, _event=None):
         if self.search_entry.cget("state") != "disabled":
@@ -1301,19 +1439,13 @@ class WebsiteCopier:
 
 if __name__ == "__main__":
     if "--ui-smoke" in sys.argv:
-        app = WebsiteCopier()
-        try:
-            for _ in range(3):
-                app.window.update_idletasks()
-                app.window.update()
-            app.window.destroy()
-        except Exception:
-            try:
-                app.window.destroy()
-            except Exception:
-                pass
+        from ui_ctk import WebsiteCopierCtk
+        app = WebsiteCopierCtk(ui_smoke=True)
+        app.window.after(0, app.window.destroy)
+        app.run()
         print("UI_SMOKE_OK")
         raise SystemExit(0)
 
-    app = WebsiteCopier()
+    from ui_ctk import WebsiteCopierCtk
+    app = WebsiteCopierCtk()
     app.run()
