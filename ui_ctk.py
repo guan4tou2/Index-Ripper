@@ -1493,3 +1493,8 @@ class WebsiteCopierCtk:
                 node.hidden = not visible
         self._rebuild_visible()
         self._sync_rows()
+
+
+def main():
+    app = WebsiteCopierCtk()
+    app.run()

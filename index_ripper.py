@@ -1188,8 +1188,8 @@ class WebsiteCopier:
                 old_executor = self.executor
                 self.max_workers = new_count
                 self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
-                # Shutdown old executor after new one is ready
-                old_executor.shutdown(wait=True, cancel_futures=False)
+                # Shutdown old executor in background to avoid blocking UI thread
+                threading.Thread(target=old_executor.shutdown, kwargs={"wait": True, "cancel_futures": False}, daemon=True).start()
         except (ValueError, TypeError):
             pass
 
