@@ -83,13 +83,12 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(hasattr(app, "threads_var"))
         self.assertTrue(hasattr(app, "toggle_panels_btn"))
 
-    def test_has_treeview(self):
+    def test_has_file_tree(self):
         import ui_ctk, importlib
         importlib.reload(ui_ctk)
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
         app.window.after(0, app.window.destroy)
         app.run()
-        # CTk version uses custom FileTree components, not ttk.Treeview
         self.assertTrue(hasattr(app, "tree_nodes"))
         self.assertTrue(hasattr(app, "tree_roots"))
         self.assertTrue(hasattr(app, "tree_scroll_frame"))

@@ -24,13 +24,20 @@ def _configure_tk_libraries() -> None:
 
     for prefix in (sys.base_prefix, sys.prefix):
         lib_root = os.path.join(prefix, "lib")
-        tcl_library = os.path.join(lib_root, "tcl8.6")
-        tk_library = os.path.join(lib_root, "tk8.6")
-        if os.path.isfile(os.path.join(tcl_library, "init.tcl")) and os.path.isfile(
-            os.path.join(tk_library, "tk.tcl")
-        ):
-            os.environ.setdefault("TCL_LIBRARY", tcl_library)
-            os.environ.setdefault("TK_LIBRARY", tk_library)
+        if not os.path.isdir(lib_root):
+            continue
+        tcl_dir = tk_dir = None
+        try:
+            for entry in os.listdir(lib_root):
+                if entry.startswith("tcl") and os.path.isfile(os.path.join(lib_root, entry, "init.tcl")):
+                    tcl_dir = os.path.join(lib_root, entry)
+                if entry.startswith("tk") and os.path.isfile(os.path.join(lib_root, entry, "tk.tcl")):
+                    tk_dir = os.path.join(lib_root, entry)
+        except OSError:
+            continue
+        if tcl_dir and tk_dir:
+            os.environ.setdefault("TCL_LIBRARY", tcl_dir)
+            os.environ.setdefault("TK_LIBRARY", tk_dir)
             return
 
 

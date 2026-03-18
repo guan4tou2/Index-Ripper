@@ -193,8 +193,6 @@ class Backend:
                 href = link.get("href")
                 if not href or href in [".", "..", "/"] or href.startswith("?"):
                     continue
-                link_text = link.get_text(strip=True)
-
                 full_url = urljoin(url, href)
                 if not full_url or not is_url_in_scope(base_url, full_url):
                     continue
@@ -206,7 +204,7 @@ class Backend:
 
                 final_url = f"{parsed_full.scheme}://{parsed_full.netloc}{path}"
 
-                is_directory_hint = href.endswith("/") or link_text.endswith("/")
+                is_directory_hint = href.endswith("/")
                 if is_directory_hint:
                     if not final_url.endswith("/"):
                         final_url += "/"

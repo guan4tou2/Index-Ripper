@@ -1229,8 +1229,7 @@ class WebsiteCopierCtk:
             label = ext if ext else "(no ext)"
             cb.configure(text=f"{label} ({self.file_type_counts[ext]})")
         var = self.file_types.get(ext)
-        if var is not None and not var.get():
-            return
+        filtered_out = var is not None and not var.get()
 
         _icon, group = self._file_icon_and_group(file_name, file_type)
         node_id = self._next_node_id()
@@ -1244,6 +1243,7 @@ class WebsiteCopierCtk:
             file_type=file_type or "",
             icon_group=group,
             checked=full_path in self.checked_items,
+            hidden=filtered_out,
         )
         self.tree_nodes[node_id] = node
         if parent_id:
