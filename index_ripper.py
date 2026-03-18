@@ -24,31 +24,8 @@ if "--self-test" in sys.argv:
     raise SystemExit(0)
 
 
-def _configure_tk_libraries() -> None:
-    """Set Tcl/Tk library env vars for uv-managed Python when missing."""
-    if os.environ.get("TCL_LIBRARY") and os.environ.get("TK_LIBRARY"):
-        return
-
-    for prefix in (sys.base_prefix, sys.prefix):
-        lib_root = os.path.join(prefix, "lib")
-        if not os.path.isdir(lib_root):
-            continue
-        tcl_dir = tk_dir = None
-        try:
-            for entry in os.listdir(lib_root):
-                if entry.startswith("tcl") and os.path.isfile(os.path.join(lib_root, entry, "init.tcl")):
-                    tcl_dir = os.path.join(lib_root, entry)
-                if entry.startswith("tk") and os.path.isfile(os.path.join(lib_root, entry, "tk.tcl")):
-                    tk_dir = os.path.join(lib_root, entry)
-        except OSError:
-            continue
-        if tcl_dir and tk_dir:
-            os.environ.setdefault("TCL_LIBRARY", tcl_dir)
-            os.environ.setdefault("TK_LIBRARY", tk_dir)
-            return
-
-
-_configure_tk_libraries()
+from app_utils import configure_tk_libraries
+configure_tk_libraries()
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -61,8 +38,10 @@ from urllib3.util.retry import Retry  # type: ignore
 from backend import Backend
 from ui_downloads import DownloadsPanel
 from app_utils import (
+    build_download_path,
     default_download_folder,
     normalize_extension,
+    rebuild_executor,
     safe_join,
     sanitize_filename,
     sanitize_path_segment,
@@ -1191,12 +1170,9 @@ class WebsiteCopier:
         """Updates the number of concurrent download threads."""
         try:
             new_count = int(new_count_str)
-            if 1 <= new_count <= 10:
-                old_executor = self.executor
+            if 1 <= new_count <= 10 and new_count != self.max_workers:
                 self.max_workers = new_count
-                self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
-                # Shutdown old executor in background to avoid blocking UI thread
-                threading.Thread(target=old_executor.shutdown, kwargs={"wait": True, "cancel_futures": False}, daemon=True).start()
+                self.executor = rebuild_executor(self.executor, self.max_workers)
         except (ValueError, TypeError):
             pass
 

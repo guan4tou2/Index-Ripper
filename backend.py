@@ -12,15 +12,7 @@ from urllib.parse import unquote, urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-from app_utils import is_url_in_scope
-
-def _cleanup_partial_file(file_path: str) -> None:
-    """Remove partial download file if it exists."""
-    try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-    except OSError:
-        pass  # Best-effort cleanup
+from app_utils import cleanup_partial_file, is_url_in_scope
 
 
 
@@ -306,19 +298,11 @@ class Backend:
             total_size = int(response.headers.get("content-length", 0))
             block_size = 8192
             downloaded = 0
-            aborted = False
-            abort_reason = None
 
             with open(file_path, "wb") as file_handle:
                 for data in response.iter_content(block_size):
                     self.ui_manager.pause_event.wait()
-                    if cancel_event is not None and cancel_event.is_set():
-                        aborted = True
-                        abort_reason = "canceled"
-                        break
-                    if self.should_stop:
-                        aborted = True
-                        abort_reason = "stopped"
+                    if (cancel_event is not None and cancel_event.is_set()) or self.should_stop:
                         break
                     if not data:
                         break
@@ -329,9 +313,12 @@ class Backend:
                         progress = (downloaded / total_size) * 100
                         self.ui_manager.update_progress(file_path, file_name, progress)
 
-            if aborted:
-                _cleanup_partial_file(file_path)
-                if abort_reason == "canceled":
+            # Re-check abort flags after file handle is closed
+            canceled = cancel_event is not None and cancel_event.is_set()
+            stopped = self.should_stop
+            if canceled or stopped:
+                cleanup_partial_file(file_path)
+                if canceled:
                     self.ui_manager.log_message(f"[Download] Canceled: {file_name}")
                     try:
                         self.ui_manager.update_download_status(file_path, "Canceled")
@@ -348,23 +335,13 @@ class Backend:
                 pass
             return True
 
-        except requests.exceptions.RequestException as ex:
-            self._log(f"[Download] Error downloading {file_name}: {str(ex)}")
-            _cleanup_partial_file(file_path)
+        except (requests.exceptions.RequestException, IOError) as ex:
+            label = "File error" if isinstance(ex, IOError) else "Error downloading"
+            self._log(f"[Download] {label} {file_name}: {ex}")
+            cleanup_partial_file(file_path)
             try:
                 self.ui_manager.update_download_status(file_path, "Failed")
-                self.ui_manager.log_message(f"[Download] Error: {file_name} - {ex}")
-            except AttributeError:
-                pass
-            return False
-        except IOError as ex:
-            self._log(f"[Download] File error for {file_name}: {str(ex)}")
-            _cleanup_partial_file(file_path)
-            try:
-                self.ui_manager.update_download_status(file_path, "Failed")
-                self.ui_manager.log_message(
-                    f"[Download] File error: {file_name} - {ex}"
-                )
+                self.ui_manager.log_message(f"[Download] {label}: {file_name} - {ex}")
             except AttributeError:
                 pass
             return False

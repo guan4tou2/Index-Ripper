@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import os
 import posixpath
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from urllib.parse import unquote
 
@@ -105,3 +108,50 @@ def default_download_folder(url: str, fallback_root: str) -> str:
     if not site_name:
         site_name = "downloads"
     return os.path.join(fallback_root, site_name)
+
+
+def cleanup_partial_file(file_path: str) -> None:
+    """Best-effort removal of a partial download file."""
+    try:
+        os.remove(file_path)
+    except OSError:
+        pass
+
+
+def configure_tk_libraries() -> None:
+    """Set Tcl/Tk library env vars for uv-managed Python when missing."""
+    if os.environ.get("TCL_LIBRARY") and os.environ.get("TK_LIBRARY"):
+        return
+    for prefix in (sys.base_prefix, sys.prefix):
+        lib_root = os.path.join(prefix, "lib")
+        if not os.path.isdir(lib_root):
+            continue
+        tcl_dir = tk_dir = None
+        try:
+            for entry in os.listdir(lib_root):
+                if entry.startswith("tcl") and os.path.isfile(os.path.join(lib_root, entry, "init.tcl")):
+                    tcl_dir = os.path.join(lib_root, entry)
+                if entry.startswith("tk") and os.path.isfile(os.path.join(lib_root, entry, "tk.tcl")):
+                    tk_dir = os.path.join(lib_root, entry)
+        except OSError:
+            continue
+        if tcl_dir and tk_dir:
+            os.environ.setdefault("TCL_LIBRARY", tcl_dir)
+            os.environ.setdefault("TK_LIBRARY", tk_dir)
+            return
+
+
+def rebuild_executor(old_executor: ThreadPoolExecutor, max_workers: int) -> ThreadPoolExecutor:
+    """Create a new executor and shut down the old one in a background thread."""
+    new_executor = ThreadPoolExecutor(max_workers=max_workers)
+    threading.Thread(target=old_executor.shutdown, kwargs={"wait": True, "cancel_futures": False}, daemon=True).start()
+    return new_executor
+
+
+def build_download_path(download_root: str, path_segments: list[str], file_name: str) -> tuple[str, str]:
+    """Return (target_dir, file_path) for a download. Raises ValueError on path escape."""
+    safe_segments = [sanitize_path_segment(s) for s in path_segments if s]
+    safe_file = sanitize_filename(file_name)
+    target_dir = safe_join(download_root, safe_segments) if safe_segments else download_root
+    file_path = safe_join(download_root, safe_segments + [safe_file])
+    return target_dir, file_path

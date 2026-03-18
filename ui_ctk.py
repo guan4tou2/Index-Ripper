@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 
 import customtkinter as ctk
 
-from app_utils import default_download_folder, normalize_extension, safe_join, sanitize_filename, sanitize_path_segment
+from app_utils import build_download_path, default_download_folder, normalize_extension, rebuild_executor, safe_join, sanitize_filename
 from backend import Backend
 from ui_downloads import DownloadsPanel
 from ui_theme import (
@@ -1303,14 +1303,10 @@ class WebsiteCopierCtk:
             if not url or not file_name:
                 continue
 
-            safe_name = sanitize_filename(file_name)
-
-            # Preserve subfolder structure from the scanned path
             dir_path = info.get("path", "")
-            path_segments = [sanitize_path_segment(seg) for seg in dir_path.strip("/").split("/") if seg]
+            path_segments = [seg for seg in dir_path.strip("/").split("/") if seg]
             try:
-                target_dir = safe_join(self.download_path, path_segments) if path_segments else self.download_path
-                file_path = safe_join(self.download_path, path_segments + [safe_name])
+                target_dir, file_path = build_download_path(self.download_path, path_segments, file_name)
             except ValueError:
                 self.log_message(f"[Download] Skipped unsafe path: {full_path}")
                 continue
@@ -1389,13 +1385,19 @@ class WebsiteCopierCtk:
         """Mark nodes hidden if they (and their descendants) don't match term."""
         term = term.lower()
 
+        cache: dict[str, bool] = {}
+
         def matches(node_id: str) -> bool:
+            if node_id in cache:
+                return cache[node_id]
             node = self.tree_nodes.get(node_id)
             if node is None:
-                return False
-            if term in node.name.lower() or term in node.full_path.lower():
-                return True
-            return any(matches(child_id) for child_id in node.children)
+                cache[node_id] = False
+            elif term in node.name.lower() or term in node.full_path.lower():
+                cache[node_id] = True
+            else:
+                cache[node_id] = any(matches(child_id) for child_id in node.children)
+            return cache[node_id]
 
         def apply_visibility(node_id: str) -> None:
             node = self.tree_nodes.get(node_id)
@@ -1404,7 +1406,7 @@ class WebsiteCopierCtk:
             if matches(node_id):
                 node.hidden = False
                 if node.kind == "folder":
-                    node.expanded = True  # auto-expand matching folders
+                    node.expanded = True
             else:
                 node.hidden = True
             for child_id in node.children:
@@ -1429,10 +1431,8 @@ class WebsiteCopierCtk:
         new_count = max(1, min(10, n))
         if new_count == self.max_workers:
             return
-        old_executor = self.executor
         self.max_workers = new_count
-        self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        threading.Thread(target=old_executor.shutdown, kwargs={"wait": True, "cancel_futures": False}, daemon=True).start()
+        self.executor = rebuild_executor(self.executor, self.max_workers)
 
     def toggle_panels(self) -> None:
         if self.panels_visible:
