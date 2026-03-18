@@ -308,24 +308,20 @@ class Backend:
             total_size = int(response.headers.get("content-length", 0))
             block_size = 8192
             downloaded = 0
+            aborted = False
+            abort_reason = None
 
             with open(file_path, "wb") as file_handle:
                 for data in response.iter_content(block_size):
                     self.ui_manager.pause_event.wait()
                     if cancel_event is not None and cancel_event.is_set():
-                        self.ui_manager.log_message(f"[Download] Canceled: {file_name}")
-                        _cleanup_partial_file(file_path)
-                        try:
-                            self.ui_manager.update_download_status(
-                                file_path, "Canceled"
-                            )
-                        except AttributeError:
-                            pass
-                        return False
+                        aborted = True
+                        abort_reason = "canceled"
+                        break
                     if self.should_stop:
-                        self._log(f"[Download] Stopping download for {file_name}")
-                        _cleanup_partial_file(file_path)
-                        return False
+                        aborted = True
+                        abort_reason = "stopped"
+                        break
                     if not data:
                         break
                     downloaded += len(data)
@@ -334,6 +330,18 @@ class Backend:
                     if total_size > 0:
                         progress = (downloaded / total_size) * 100
                         self.ui_manager.update_progress(file_path, file_name, progress)
+
+            if aborted:
+                _cleanup_partial_file(file_path)
+                if abort_reason == "canceled":
+                    self.ui_manager.log_message(f"[Download] Canceled: {file_name}")
+                    try:
+                        self.ui_manager.update_download_status(file_path, "Canceled")
+                    except AttributeError:
+                        pass
+                else:
+                    self._log(f"[Download] Stopping download for {file_name}")
+                return False
 
             self.ui_manager.update_progress(file_path, file_name, 100)
             try:

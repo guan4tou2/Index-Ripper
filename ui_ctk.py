@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 
 import customtkinter as ctk
 
-from app_utils import default_download_folder, normalize_extension, safe_join, sanitize_filename
+from app_utils import default_download_folder, normalize_extension, safe_join, sanitize_filename, sanitize_path_segment
 from backend import Backend
 from ui_downloads import DownloadsPanel
 from ui_theme import (
@@ -1304,7 +1304,17 @@ class WebsiteCopierCtk:
                 continue
 
             safe_name = sanitize_filename(file_name)
-            file_path = safe_join(self.download_path, [safe_name])
+
+            # Preserve subfolder structure from the scanned path
+            dir_path = info.get("path", "")
+            path_segments = [sanitize_path_segment(seg) for seg in dir_path.strip("/").split("/") if seg]
+            try:
+                target_dir = safe_join(self.download_path, path_segments) if path_segments else self.download_path
+                file_path = safe_join(self.download_path, path_segments + [safe_name])
+            except ValueError:
+                self.log_message(f"[Download] Skipped unsafe path: {full_path}")
+                continue
+            os.makedirs(target_dir, exist_ok=True)
 
             cancel_event = self.downloads_panel.ensure(file_path, safe_name)
             futures.append(self.executor.submit(self.backend.download_file, url, file_path, safe_name, cancel_event))
@@ -1416,7 +1426,13 @@ class WebsiteCopierCtk:
             n = int(self.threads_var.get())
         except (ValueError, AttributeError):
             return
-        self.max_workers = max(1, min(10, n))
+        new_count = max(1, min(10, n))
+        if new_count == self.max_workers:
+            return
+        old_executor = self.executor
+        self.max_workers = new_count
+        self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        threading.Thread(target=old_executor.shutdown, kwargs={"wait": True, "cancel_futures": False}, daemon=True).start()
 
     def toggle_panels(self) -> None:
         if self.panels_visible:
