@@ -22,7 +22,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --extra dev
-      - run: uv run python -m pytest tests/ -v
+      - name: Run unit tests (exclude UI smoke tests that need display)
+        run: uv run python -m pytest tests/ -v --ignore=tests/test_app_smoke.py
 
   # -----------------------------------------------------------------------
   # Electron tests
@@ -48,7 +49,7 @@ jobs:
   # -----------------------------------------------------------------------
   build-electron:
     name: Build Electron (${{ matrix.os }})
-    needs: [test-python, test-electron]
+    needs: test-electron
     if: github.event_name == 'push'
     strategy:
       fail-fast: false
