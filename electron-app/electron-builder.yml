@@ -1,0 +1,21 @@
+appId: com.indexripper.app
+productName: Index Ripper
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+win:
+  target: nsis
+  icon: resources/icon.ico
+mac:
+  target: dmg
+  icon: resources/icon.png
+  category: public.app-category.utilities
+linux:
+  target: AppImage
+  icon: resources/icon.png
+  category: Utility

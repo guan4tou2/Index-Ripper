@@ -4,11 +4,11 @@ from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
 a = Analysis(
-    ["index_ripper.py"],
-    pathex=[],
+    ["src/index_ripper/__main__.py"],
+    pathex=["src"],
     binaries=[],
     datas=[],
-    hiddenimports=["tkinter", "tkinter.ttk"],
+    hiddenimports=["tkinter", "tkinter.ttk", "index_ripper"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

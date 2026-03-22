@@ -66,35 +66,19 @@ A graphical tool specifically designed for downloading files from "Index of" pag
   - Click file type checkboxes to select/deselect
   - Use Select all/Deselect all buttons for quick operations
 
+## UI Architecture
+
+IndexRipper uses **CustomTkinter** as its UI framework, providing a modern look with automatic dark/light theme switching.
+
+The file tree uses a custom `FileTree` component (built on `CTkScrollableFrame`) with emoji icons instead of pixel art:
+- 📁 folder / 🖼️ image / 📄 document / 🗜️ archive / 💻 code / 🎵 audio / 🎬 video / 📝 text / ⚙️ binary
+
 ## System Requirements
 
-- Python 3.10 or higher
+- Python **3.11** or higher
 - Supports Windows, macOS, Linux
 
-### Windows Users
-
-- When installing Python, check "tcl/tk and IDLE"
-- If not checked, re-run installer and modify
-
-### macOS Users
-
-```bash
-# Install Python and Tkinter using Homebrew
-brew install python-tk@3.10
-```
-
-### Linux Users
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install python3-tk
-
-# Fedora
-sudo dnf install python3-tkinter
-
-# Arch Linux
-sudo pacman -S tk
-```
+> CustomTkinter bundles its own Tcl/Tk — **no separate system Tkinter installation needed**.
 
 ## Installing Dependencies
 
@@ -104,38 +88,25 @@ Prefer uv for faster, reproducible installs:
 # Install uv (one-time)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install required packages
-uv pip install -r requirements.txt
+# Install required packages (reads pyproject.toml)
+uv sync
 ```
 
 ## Running the Application
 
 ```bash
-# Run with uv
-uv run python index_ripper.py
-
-# Run ttkbootstrap UI entry
-uv run python index_ripper_ttkb.py
+# Run with uv (CustomTkinter UI)
+uv run python -m index_ripper
 
 # Quick non-interactive smoke check
-uv run python index_ripper.py --smoke
+uv run python -m index_ripper --smoke
 
-# UI smoke check (requires tkinter)
-uv run python index_ripper.py --ui-smoke
-
-# ttkbootstrap UI smoke check
-uv run python index_ripper_ttkb.py --ui-smoke
+# UI smoke check
+uv run python -m index_ripper --ui-smoke
 
 # Deterministic self-test (no real network)
-uv run python index_ripper.py --self-test
-
-# Deterministic self-test for ttkbootstrap entry
-uv run python index_ripper_ttkb.py --self-test
+uv run python -m index_ripper --self-test
 ```
-
-`index_ripper_ttkb.py --ui-smoke` intentionally uses a minimal/safe UI construction path,
-so it can validate Tk window startup across environments where some Pillow Tk image
-bridges may be unavailable.
 
 ## Download Prebuilt Binaries
 
@@ -192,21 +163,21 @@ Build platform-specific executables with uv + PyInstaller.
 Windows (PowerShell):
 
 ```powershell
-uv pip install -r requirements.txt pyinstaller pillow
+uv pip install pyinstaller
 uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper `
-  --hidden-import tkinter --hidden-import tkinter.ttk index_ripper.py
+  --collect-all customtkinter --paths src src/index_ripper/__main__.py
 ```
 
 macOS/Linux (bash):
 
 ```bash
-uv pip install -r requirements.txt pyinstaller pillow
+uv pip install pyinstaller
 # macOS .app
 uv run pyinstaller -F --windowed --name=IndexRipper \
-  --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
+  --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
 # Linux single binary
 uv run pyinstaller --onefile --windowed --name=IndexRipper \
-  --hidden-import tkinter --hidden-import tkinter.ttk --icon=app.png index_ripper.py
+  --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
 ```
 
 ## Important Notes
@@ -224,13 +195,16 @@ MIT License
 
 ### 1. tkinter Related Errors
 
-If you encounter "No module named '_tkinter'" error:
+CustomTkinter bundles its own Tcl/Tk. If issues persist:
 
-- Windows: Reinstall Python, ensure "tcl/tk and IDLE" is checked
-- macOS: Run `brew install python-tk@3.10`
-- Linux: Install tkinter package for your distribution
+- macOS (Homebrew Python): `brew install python-tk@3.11`
+- Linux: `sudo apt-get install python3-tk` (Ubuntu/Debian)
 
 ### 2. Display Issues
 
 - If interface displays abnormally, it might be a DPI scaling issue
 - Windows users can right-click Python.exe → Properties → Compatibility → Change high DPI settings, and enable high DPI scaling override
+
+### 3. Dark/Light Theme
+
+IndexRipper follows the system appearance by default, with automatic switching for macOS and Windows dark mode.

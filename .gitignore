@@ -14,3 +14,11 @@ __pycache__/
 *.egg-info/
 
 .sisyphus/
+.worktrees/
+
+electron-app/node_modules/
+electron-app/dist/
+electron-app/out/
+electron-app/*.tsbuildinfo
+
+.superpowers/
