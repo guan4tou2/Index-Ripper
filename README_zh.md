@@ -1,210 +1,147 @@
-# IndexRipper (索引擷取器)
+# Index Ripper
 
 [![CI](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml/badge.svg)](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [English](README.md)
 
-這是一個專門用於下載 Index of 頁面檔案的圖形化工具，可以輕鬆掃描並下載目錄列表中的所有檔案。
+從 "Index of" 目錄列表頁面下載檔案的桌面工具。掃描網站、瀏覽檔案樹、按類型篩選，下載你需要的檔案。
 
-## 功能特點
+## 功能
 
-- 📂 專門處理 Index of 類型網頁
-- 🔍 遞迴掃描目錄結構
-- ✅ 可選擇性下載檔案
-- ⏸️ 支援暫停/繼續下載
-- 🌐 支援 HTTP/HTTPS 協議
-- 📊 即時顯示下載進度
-- 🗂️ 自動建立資料夾結構
-- 🔄 支援暫停/繼續（同次執行期間，非跨次續傳）
+- 遞迴掃描目錄結構，支援暫停/繼續
+- 檔案樹：展開/收合、搜尋、類型篩選
+- 多執行緒下載（1-10 並行），逐檔進度顯示
+- 暫停/繼續/取消個別下載
+- 伺服器錯誤自動重試（3 次，指數退避）
+- 保留原始目錄結構
+- 多網站任務佇列（Electron）— 用分頁同時掃描/下載多個網站
+- 檔案預覽（圖片 + 文字），雙擊即可（Electron）
+- Shift+Click 範圍選取，按名稱/大小/類型排序（Electron）
+- 深色模式 UI
 
-## 主要功能
+## 兩個版本
 
-### 掃描功能
+| | Python (CustomTkinter) | Electron (React + TypeScript) |
+|---|---|---|
+| 位置 | `src/index_ripper/` | `electron-app/` |
+| UI | CustomTkinter + emoji 圖示 | React + Tailwind + shadcn/ui |
+| 後端 | Python requests + BeautifulSoup | Node.js http + cheerio |
+| 多網站分頁 | 無 | 有 |
+| 檔案預覽 | 無 | 有（圖片 + 文字）|
+| 打包 | PyInstaller | electron-builder |
 
-- 自動掃描網站目錄結構
-- 顯示檔案大小和類型
-- 支援掃描暫停/繼續
-- 即時顯示掃描進度
+## 快速開始
 
-### 檔案類型管理
+### Electron（推薦）
 
-- 自動識別所有檔案類型
-- 檔案類型統計和過濾
-- 一鍵選擇/取消選擇特定類型
-- 檔案類型關聯選擇
+```bash
+cd electron-app
+npm install
+npm run dev
+```
 
-### 下載管理
-
-- 多線程並行下載
-- 可調整同時下載數量
-- 支援暫停/繼續下載
-- 保持原始目錄結構
-- 顯示下載進度和速度
-
-### 其他功能
-
-- 檔案排序（按名稱/大小/類型）
-- 目錄展開/收起
-- 全選/取消全選
-- 自定義下載位置
-
-## 使用方法
-
-1. 輸入要掃描的網站 URL
-2. 點擊「掃描」開始掃描網站
-3. 選擇要下載的檔案類型和具體檔案
-4. 選擇下載位置（可選）
-5. 點擊「下載選擇的檔案」開始下載
-
-## 快捷操作
-
-- 右鍵選單：
-  - 全選/取消全選
-  - 展開/收起所有目錄
-  
-- 檔案類型過濾：
-  - 點擊檔案類型勾選框選擇/取消選擇
-  - 使用全選/取消全選按鈕快速操作
-
-## UI 架構
-
-IndexRipper 使用 **CustomTkinter** 作為 UI 框架，提供現代外觀與深色/淺色主題切換。
-
-檔案樹採用自訂 `FileTree` 元件（基於 `CTkScrollableFrame`），以 emoji 圖示取代像素圖，支援：
-- 📁 資料夾 / 🖼️ 圖片 / 📄 文件 / 🗜️ 壓縮檔 / 💻 程式碼 / 🎵 音訊 / 🎬 影片 / 📝 文字 / ⚙️ 二進位
-
-## 系統需求
-
-- Python **3.11** 或更高版本
-- 支援 Windows、macOS、Linux 系統
-
-> CustomTkinter 內建 Tcl/Tk，**不需要**額外安裝系統 Tkinter 套件。
-
-## 安裝依賴
-
-建議使用 uv 來進行快速且可重現的安裝：
+### Python
 
 ```bash
 # 安裝 uv（僅需一次）
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 安裝所需套件（讀取 pyproject.toml）
+# 安裝並執行
 uv sync
-```
-
-## 執行方式
-
-```bash
-# 使用 uv 執行（CustomTkinter UI）
 uv run python -m index_ripper
-
-# 快速無互動 smoke 檢查
-uv run python -m index_ripper --smoke
-
-# UI smoke 檢查
-uv run python -m index_ripper --ui-smoke
-
-# 可重現的 self-test（不依賴真網路）
-uv run python -m index_ripper --self-test
 ```
 
-## 下載已編譯執行檔
+## 下載預建檔案
 
-可於 GitHub Actions 的 artifacts 下載預先編譯好的執行檔：
+從 [Releases](https://github.com/guan4tou2/Index-Ripper/releases) 或 [CI Artifacts](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml) 下載：
 
-- Windows：IndexRipper.exe
-- macOS（Intel 與 Apple Silicon）：IndexRipper.app
-- Linux（x86_64）：IndexRipper
+| 平台 | Electron | Python |
+|------|----------|--------|
+| Windows | `.exe`（NSIS 安裝程式）| `.exe`（PyInstaller）|
+| macOS | `.dmg`（Universal）| `.app` |
+| Linux | `.AppImage` | 執行檔 |
 
-位置：Actions → 「Build Executables (uv + PyInstaller)」→ 最近一次成功執行 → Artifacts。
+> **macOS 注意：** 應用程式未簽章。首次啟動：右鍵 → 打開，或執行 `xattr -dr com.apple.quarantine IndexRipper.app`。
 
-- 直接前往工作流程列表：[CI Workflow](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml)
-- 最近成功記錄列表：[Actions](https://github.com/guan4tou2/Index-Ripper/actions)
+## 使用方式
 
-注意事項：
+1. 輸入指向 "Index of" 目錄列表的 URL
+2. 點擊 **Scan** 掃描檔案和目錄
+3. 瀏覽檔案樹、按類型篩選、按名稱搜尋
+4. 選取檔案（點擊、Shift+Click 範圍選取、Ctrl+A 全選）
+5. 點擊 **Download** 開始下載
 
-- macOS：未簽章/未 notarize。首次打開可能需右鍵→開啟，或執行 `xattr -dr com.apple.quarantine IndexRipper.app`。
-- Linux：如需，請先賦予執行權限：`chmod +x ./IndexRipper`。
-- 使用預編譯檔不需要安裝 Python。
+### 快捷鍵
 
-### macOS 開啟與權限教學
+| 快捷鍵 | 動作 |
+|--------|------|
+| `Ctrl/Cmd + F` | 搜尋 |
+| `Ctrl/Cmd + A` | 全選 |
+| `Escape` | 清除搜尋 |
+| `Enter` | 開始掃描（URL 輸入框聚焦時）|
+| 雙擊 | 預覽檔案（Electron）|
 
-若出現「無法打開應用程式」或「無法驗證開發者」：
+## 從原始碼建置
 
-1) 使用 Finder 的方式（建議先試）
-
-- 右鍵點選 `IndexRipper.app` → 選擇「打開」→ 在出現的對話框中再按一次「打開」。
-- 若在「系統設定 → 隱私權與安全性 → 一般」看到「仍要打開」，請點選它。
-
-1) 從終端機移除隔離屬性（Gatekeeper 標記）
+### Electron
 
 ```bash
-xattr -dr com.apple.quarantine "/path/to/IndexRipper.app"
+cd electron-app
+npm install
+
+# 開發模式
+npm run dev
+
+# 建置當前平台
+npm run build:mac    # macOS .dmg
+npm run build:win    # Windows .exe
+npm run build:linux  # Linux .AppImage
 ```
 
-1) 賦予執行權限（進入 .app 內部的 Contents/MacOS）
+### Python
 
 ```bash
-chmod +x "/path/to/IndexRipper.app/Contents/MacOS/IndexRipper"
-```
-
-1) 直接從終端機啟動（可觀察輸出訊息，有助除錯）
-
-```bash
-"/path/to/IndexRipper.app/Contents/MacOS/IndexRipper"
-```
-
-提示：請將上述的 `/path/to` 替換為實際下載位置（例如 `~/Downloads`）。
-
-## 本地打包（Packaging）
-
-使用 uv + PyInstaller 打包成各平台可執行檔。
-
-Windows（PowerShell）：
-
-```powershell
+uv sync
 uv pip install pyinstaller
-uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper `
-  --collect-all customtkinter --paths src src/index_ripper/__main__.py
-```
 
-macOS/Linux（bash）：
-
-```bash
-uv pip install pyinstaller
-# macOS .app
+# macOS
 uv run pyinstaller -F --windowed --name=IndexRipper \
   --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
-# Linux 單一執行檔
+
+# Windows
+uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper \
+  --collect-all customtkinter --paths src src/index_ripper/__main__.py
+
+# Linux
 uv run pyinstaller --onefile --windowed --name=IndexRipper \
   --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
 ```
 
-## 注意事項
+## 專案結構
 
-1. 請確保有足夠的硬碟空間
-2. 下載大量檔案時建議調整同時下載數量
-3. 某些網站可能有訪問限制或需要認證
-4. 建議在穩定的網路環境下使用
+```
+Index-Ripper/
+├── electron-app/              # Electron 版本
+│   ├── src/main/              #   主程序（掃描器、下載器、IPC）
+│   ├── src/renderer/          #   React UI
+│   ├── src/shared/            #   共用型別
+│   └── src/preload/           #   Context bridge
+├── src/index_ripper/          # Python 版本
+│   ├── app.py                 #   主 UI（CustomTkinter）
+│   ├── backend.py             #   掃描器 & 下載器
+│   └── ui/                    #   UI 元件
+├── tests/                     # Python 測試
+└── docs/                      # 設計規格 & 計畫
+```
 
-## 授權協議
+## 貢獻
 
-MIT License
+1. Fork 此專案
+2. 建立功能分支（`git checkout -b feat/my-feature`）
+3. 提交變更
+4. Push 並開啟 Pull Request
 
-## 常見問題
+## 授權
 
-### 1. tkinter 相關錯誤
-
-CustomTkinter 內建 Tcl/Tk，通常不需要額外安裝。若仍出現問題：
-
-- macOS（Homebrew Python）：`brew install python-tk@3.11`
-- Linux：`sudo apt-get install python3-tk`（Ubuntu/Debian）
-
-### 2. 畫面顯示問題
-
-- 如果介面顯示異常，可能是 DPI 縮放問題
-- Windows 用戶可以右鍵點擊 Python.exe → 內容 → 相容性 → 變更高 DPI 設定，並啟用高 DPI 縮放覆寫
-
-### 3. 深色/淺色主題
-
-IndexRipper 預設跟隨系統外觀設定（system），支援 macOS 與 Windows 的深色模式自動切換。
+[MIT](LICENSE)

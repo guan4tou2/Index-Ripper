@@ -1,210 +1,147 @@
-# IndexRipper
+# Index Ripper
 
 [![CI](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml/badge.svg)](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [中文說明](README_zh.md)
 
-A graphical tool specifically designed for downloading files from "Index of" pages, making it easy to scan and download all files from directory listings.
+A desktop tool for downloading files from "Index of" directory listing pages. Scan a website, browse its file tree, filter by type, and download what you need.
 
 ## Features
 
-- 📂 Specialized in handling "Index of" type web pages
-- 🔍 Recursive directory structure scanning
-- ✅ Selective file downloading
-- ⏸️ Support pause/resume downloads
-- 🌐 HTTP/HTTPS protocol support
-- 📊 Real-time download progress display
-- 🗂️ Automatic folder structure creation
-- 🔄 In-session pause/resume (not persistent resume)
+- Recursive directory scanning with pause/resume
+- File tree with expand/collapse, search, and type filtering
+- Multi-threaded downloads (1-10 concurrent) with per-file progress
+- Pause/resume/cancel individual downloads
+- Automatic retry on server errors (3 attempts, exponential backoff)
+- Preserves original directory structure
+- Multi-site task queue (Electron) — scan/download multiple sites in tabs
+- File preview (images + text) via double-click (Electron)
+- Shift+click range selection and sort by name/size/type (Electron)
+- Dark mode UI
 
-## Main Functions
+## Two Versions
 
-### Scanning Features
+| | Python (CustomTkinter) | Electron (React + TypeScript) |
+|---|---|---|
+| Location | `src/index_ripper/` | `electron-app/` |
+| UI | CustomTkinter with emoji icons | React + Tailwind + shadcn/ui |
+| Backend | Python requests + BeautifulSoup | Node.js http + cheerio |
+| Multi-site tabs | No | Yes |
+| File preview | No | Yes (images + text) |
+| Build | PyInstaller | electron-builder |
 
-- Automatic website directory structure scanning
-- Display file sizes and types
-- Support scan pause/resume
-- Real-time scanning progress display
+## Quick Start
 
-### File Type Management
+### Electron (recommended)
 
-- Automatic identification of all file types
-- File type statistics and filtering
-- One-click select/deselect specific types
-- File type association selection
+```bash
+cd electron-app
+npm install
+npm run dev
+```
 
-### Download Management
-
-- Multi-threaded parallel downloads
-- Adjustable concurrent download count
-- Support pause/resume downloads
-- Preserve original directory structure
-- Display download progress and speed
-
-### Additional Features
-
-- File sorting (by name/size/type)
-- Directory expand/collapse
-- Select all/deselect all
-- Custom download location
-
-## Usage
-
-1. Enter the website URL to scan
-2. Click "Scan" to start website scanning
-3. Select file types and specific files to download
-4. Choose download location (optional)
-5. Click "Download Selected Files" to start downloading
-
-## Quick Operations
-
-- Right-click menu:
-  - Select all/Deselect all
-  - Expand/Collapse all directories
-  
-- File type filtering:
-  - Click file type checkboxes to select/deselect
-  - Use Select all/Deselect all buttons for quick operations
-
-## UI Architecture
-
-IndexRipper uses **CustomTkinter** as its UI framework, providing a modern look with automatic dark/light theme switching.
-
-The file tree uses a custom `FileTree` component (built on `CTkScrollableFrame`) with emoji icons instead of pixel art:
-- 📁 folder / 🖼️ image / 📄 document / 🗜️ archive / 💻 code / 🎵 audio / 🎬 video / 📝 text / ⚙️ binary
-
-## System Requirements
-
-- Python **3.11** or higher
-- Supports Windows, macOS, Linux
-
-> CustomTkinter bundles its own Tcl/Tk — **no separate system Tkinter installation needed**.
-
-## Installing Dependencies
-
-Prefer uv for faster, reproducible installs:
+### Python
 
 ```bash
 # Install uv (one-time)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install required packages (reads pyproject.toml)
+# Install and run
 uv sync
-```
-
-## Running the Application
-
-```bash
-# Run with uv (CustomTkinter UI)
 uv run python -m index_ripper
-
-# Quick non-interactive smoke check
-uv run python -m index_ripper --smoke
-
-# UI smoke check
-uv run python -m index_ripper --ui-smoke
-
-# Deterministic self-test (no real network)
-uv run python -m index_ripper --self-test
 ```
 
 ## Download Prebuilt Binaries
 
-You can download prebuilt executables from GitHub Actions artifacts:
+Download from [Releases](https://github.com/guan4tou2/Index-Ripper/releases) or [CI Artifacts](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml):
 
-- Windows: IndexRipper.exe
-- macOS (Intel and Apple Silicon): IndexRipper.app
-- Linux (x86_64): IndexRipper
+| Platform | Electron | Python |
+|----------|----------|--------|
+| Windows | `.exe` (NSIS installer) | `.exe` (PyInstaller) |
+| macOS | `.dmg` (Universal) | `.app` |
+| Linux | `.AppImage` | Binary |
 
-Find them under Actions → "Build Executables (uv + PyInstaller)" → the latest successful run → Artifacts.
+> **macOS note:** The app is unsigned. First launch: right-click -> Open, or run `xattr -dr com.apple.quarantine IndexRipper.app`.
 
-- Direct link to workflow runs: [CI Workflow](https://github.com/guan4tou2/Index-Ripper/actions/workflows/ci.yml)
-- Latest successful runs: [Actions](https://github.com/guan4tou2/Index-Ripper/actions)
+## Usage
 
-Notes:
+1. Enter a URL pointing to an "Index of" directory listing
+2. Click **Scan** to discover files and directories
+3. Browse the file tree, filter by type, search by name
+4. Select files (click, Shift+click for range, Ctrl+A for all)
+5. Click **Download** to start downloading
 
-- macOS: The app is not signed/notarized. You may need to right-click → Open the first time, or run `xattr -dr com.apple.quarantine IndexRipper.app`.
-- Linux: Mark the file executable if needed: `chmod +x ./IndexRipper`.
-- Using prebuilt binaries does not require a Python installation.
+### Keyboard Shortcuts
 
-### macOS: Open and Permissions Guide
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl/Cmd + F` | Focus search |
+| `Ctrl/Cmd + A` | Select all files |
+| `Escape` | Clear search |
+| `Enter` | Start scan (when URL input focused) |
+| Double-click | Preview file (Electron) |
 
-If you see "can't be opened" or "cannot be verified":
+## Build From Source
 
-1) Try Finder (recommended first):
-
-- Right-click `IndexRipper.app` → Open → Click Open in the dialog.
-- Or go to System Settings → Privacy & Security → General → Click "Open Anyway" if shown.
-
-1) Remove quarantine attribute (Gatekeeper flag) from Terminal:
-
-```bash
-xattr -dr com.apple.quarantine "/path/to/IndexRipper.app"
-```
-
-1) Grant executable permission (inside the .app Contents/MacOS):
+### Electron
 
 ```bash
-chmod +x "/path/to/IndexRipper.app/Contents/MacOS/IndexRipper"
+cd electron-app
+npm install
+
+# Development
+npm run dev
+
+# Build for current platform
+npm run build:mac    # macOS .dmg
+npm run build:win    # Windows .exe
+npm run build:linux  # Linux .AppImage
 ```
 
-1) Launch from Terminal (to observe logs for troubleshooting):
+### Python
 
 ```bash
-"/path/to/IndexRipper.app/Contents/MacOS/IndexRipper"
-```
-
-Tip: Replace `/path/to` with your actual download location (e.g., `~/Downloads`).
-
-## Build Locally (Packaging)
-
-Build platform-specific executables with uv + PyInstaller.
-
-Windows (PowerShell):
-
-```powershell
+uv sync
 uv pip install pyinstaller
-uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper `
-  --collect-all customtkinter --paths src src/index_ripper/__main__.py
-```
 
-macOS/Linux (bash):
-
-```bash
-uv pip install pyinstaller
-# macOS .app
+# macOS
 uv run pyinstaller -F --windowed --name=IndexRipper \
   --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
-# Linux single binary
+
+# Windows
+uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper \
+  --collect-all customtkinter --paths src src/index_ripper/__main__.py
+
+# Linux
 uv run pyinstaller --onefile --windowed --name=IndexRipper \
   --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
 ```
 
-## Important Notes
+## Project Structure
 
-1. Ensure sufficient disk space
-2. Adjust concurrent download count when downloading many files
-3. Some websites may have access restrictions or require authentication
-4. Recommended to use with a stable internet connection
+```
+Index-Ripper/
+├── electron-app/              # Electron version
+│   ├── src/main/              #   Main process (scanner, downloader, IPC)
+│   ├── src/renderer/          #   React UI
+│   ├── src/shared/            #   Shared types
+│   └── src/preload/           #   Context bridge
+├── src/index_ripper/          # Python version
+│   ├── app.py                 #   Main UI (CustomTkinter)
+│   ├── backend.py             #   Scanner & downloader
+│   └── ui/                    #   UI components
+├── tests/                     # Python tests
+└── docs/                      # Design specs & plans
+```
+
+## Contributing
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feat/my-feature`)
+3. Commit your changes
+4. Push and open a Pull Request
 
 ## License
 
-MIT License
-
-## FAQ
-
-### 1. tkinter Related Errors
-
-CustomTkinter bundles its own Tcl/Tk. If issues persist:
-
-- macOS (Homebrew Python): `brew install python-tk@3.11`
-- Linux: `sudo apt-get install python3-tk` (Ubuntu/Debian)
-
-### 2. Display Issues
-
-- If interface displays abnormally, it might be a DPI scaling issue
-- Windows users can right-click Python.exe → Properties → Compatibility → Change high DPI settings, and enable high DPI scaling override
-
-### 3. Dark/Light Theme
-
-IndexRipper follows the system appearance by default, with automatic switching for macOS and Windows dark mode.
+[MIT](LICENSE)
