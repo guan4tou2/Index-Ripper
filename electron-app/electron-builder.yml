@@ -3,19 +3,40 @@ productName: Index Ripper
 directories:
   buildResources: resources
   output: dist
+asar: true
+compression: maximum
 files:
-  - '!**/.vscode/*'
-  - '!src/*'
-  - '!electron.vite.config.*'
-  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - out/**/*
+  - "!out/**/*.map"
+  - "!**/.vscode/*"
+  - "!src/*"
+  - "!electron.vite.config.*"
+  - "!{tsconfig*.json,vitest.config.ts,components.json}"
+  - "!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml}"
+  - "!{CHANGELOG.md,README.md,LICENSE}"
 win:
-  target: nsis
-  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: resources/icon.png
+  artifactName: "IndexRipper-${version}-Windows.${ext}"
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: true
 mac:
-  target: dmg
+  target:
+    - target: dmg
+      arch: [universal]
   icon: resources/icon.png
   category: public.app-category.utilities
+  artifactName: "IndexRipper-${version}-macOS.${ext}"
+dmg:
+  writeUpdateInfo: false
 linux:
-  target: AppImage
+  target:
+    - target: AppImage
+      arch: [x64]
   icon: resources/icon.png
   category: Utility
+  artifactName: "IndexRipper-${version}-Linux.${ext}"

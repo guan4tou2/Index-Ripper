@@ -12,179 +12,110 @@ permissions:
   contents: write
 
 jobs:
-  test:
-    name: Test (ubuntu-latest)
+  # -----------------------------------------------------------------------
+  # Python tests
+  # -----------------------------------------------------------------------
+  test-python:
+    name: Test Python
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --extra dev
+      - run: uv run python -m pytest tests/ -v
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
+  # -----------------------------------------------------------------------
+  # Electron tests
+  # -----------------------------------------------------------------------
+  test-electron:
+    name: Test Electron
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: electron-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron-app/package-lock.json
+      - run: npm ci
+      - run: npx vitest run
 
-      - name: Install dependencies
-        run: uv sync --extra dev
-
-      - name: Run unit tests
-        run: uv run python -m pytest tests/ -v
-
-  build:
-    name: Build (${{ matrix.os }})
-    needs: test
+  # -----------------------------------------------------------------------
+  # Electron build (all platforms)
+  # -----------------------------------------------------------------------
+  build-electron:
+    name: Build Electron (${{ matrix.os }})
+    needs: [test-python, test-electron]
+    if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-13, macos-14, ubuntu-latest]
         include:
           - os: windows-latest
+            build_cmd: npm run build:win
             artifact_name: IndexRipper-Windows
-            output_path: dist/IndexRipper.exe
-          - os: macos-13
-            artifact_name: IndexRipper-macOS-Intel
-            output_path: dist/IndexRipper.app
+            artifact_glob: "electron-app/dist/*.exe"
           - os: macos-14
-            artifact_name: IndexRipper-macOS-AppleSilicon
-            output_path: dist/IndexRipper.app
+            build_cmd: npm run build:mac
+            artifact_name: IndexRipper-macOS
+            artifact_glob: "electron-app/dist/*.dmg"
           - os: ubuntu-latest
+            build_cmd: npm run build:linux
             artifact_name: IndexRipper-Linux
-            output_path: dist/IndexRipper
+            artifact_glob: "electron-app/dist/*.AppImage"
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: electron-app
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron-app/package-lock.json
 
-      - name: Install dependencies
-        run: uv sync
+      - run: npm ci
 
-      - name: Install PyInstaller
-        run: uv pip install pyinstaller
+      - name: Build
+        run: ${{ matrix.build_cmd }}
 
-      - name: Build (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper --collect-all customtkinter --paths src src/index_ripper/__main__.py
-
-      - name: Build (macOS)
-        if: startsWith(matrix.os, 'macos-')
-        run: |
-          uv run pyinstaller -F --windowed --name=IndexRipper \
-            --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
-          [ -f dist/IndexRipper ] && rm -f dist/IndexRipper || true
-
-      - name: Sign app (ad-hoc)
-        if: startsWith(matrix.os, 'macos-')
-        run: |
-          codesign --force --deep --sign - "dist/IndexRipper.app"
-
-      - name: Build (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          uv run pyinstaller --onefile --windowed --name=IndexRipper \
-            --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
-
-      - name: Verify artifact exists
+      - name: List dist
         shell: bash
-        run: |
-          echo "Listing dist/:" && ls -la dist || true
-          if [ -d "${{ matrix.output_path }}" ] || [ -f "${{ matrix.output_path }}" ]; then
-            echo "Artifact exists: ${{ matrix.output_path }}"
-          else
-            echo "Artifact not found: ${{ matrix.output_path }}" && exit 1
-          fi
+        run: ls -la dist/ || true
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.output_path }}
+          path: ${{ matrix.artifact_glob }}
           if-no-files-found: error
 
+  # -----------------------------------------------------------------------
+  # Release (on tag push only)
+  # -----------------------------------------------------------------------
   release:
     name: Release
-    needs: build
+    needs: build-electron
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
-          merge-multiple: false
+          merge-multiple: true
 
-      - name: Ensure zip is available
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y zip
+      - name: List release files
+        run: find artifacts -type f | sort
 
-      - name: Zip macOS apps
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          (
-            cd artifacts
-            for dir in IndexRipper-macOS-*; do
-              [ -d "$dir" ] || continue
-              zip_name="${dir}.app.zip"
-              app_src=""
-              if [ -d "$dir/IndexRipper.app" ]; then
-                app_src="$dir/IndexRipper.app"
-              elif [ -d "$dir/dist/IndexRipper.app" ]; then
-                app_src="$dir/dist/IndexRipper.app"
-              elif [ -d "$dir/Contents" ]; then
-                rm -rf "$dir/_pkg"
-                mkdir -p "$dir/_pkg/IndexRipper.app"
-                shopt -s dotglob nullglob
-                for item in "$dir"/*; do
-                  base="$(basename "$item")"
-                  [ "$base" = "_pkg" ] && continue
-                  mv "$item" "$dir/_pkg/IndexRipper.app/"
-                done
-                shopt -u dotglob nullglob
-                app_src="$dir/_pkg/IndexRipper.app"
-              fi
-
-              if [ -n "$app_src" ] && [ -d "$app_src" ]; then
-                zip_out_path="$(pwd)/$zip_name"
-                app_parent="$(dirname "$app_src")"
-                (
-                  cd "$app_parent"
-                  echo "Zipping IndexRipper.app from $(pwd) -> $zip_out_path"
-                  zip -r -9 "$zip_out_path" "IndexRipper.app"
-                )
-              else
-                echo "No macOS app bundle found in $dir, skipping"
-              fi
-            done
-          )
-
-      - name: Normalize asset filenames
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f artifacts/IndexRipper-Windows/IndexRipper.exe ]; then
-            mv artifacts/IndexRipper-Windows/IndexRipper.exe artifacts/IndexRipper-Windows.exe
-          fi
-          if [ -f artifacts/IndexRipper-Linux/IndexRipper ]; then
-            mv artifacts/IndexRipper-Linux/IndexRipper artifacts/IndexRipper-Linux.bin
-          fi
-
-      - name: List prepared files
-        run: |
-          echo "Artifacts tree:" && ls -laR artifacts || true
-          echo "macOS zips:" && ls -la artifacts/*.app.zip || true
-          echo "Windows exe:" && ls -la artifacts/*.exe || true
-          echo "Linux bin:" && ls -la artifacts/*.bin || true
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/IndexRipper-Windows.exe
-            artifacts/IndexRipper-Linux.bin
-            artifacts/IndexRipper-macOS-*.app.zip
+          files: artifacts/*
           draft: false
           prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
