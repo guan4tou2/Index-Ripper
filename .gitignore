@@ -15,3 +15,10 @@ __pycache__/
 
 .sisyphus/
 .worktrees/
+
+electron-app/node_modules/
+electron-app/dist/
+electron-app/out/
+electron-app/*.tsbuildinfo
+
+.superpowers/

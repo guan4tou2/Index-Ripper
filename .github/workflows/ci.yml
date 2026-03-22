@@ -25,7 +25,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run unit tests
-        run: uv run python -m pytest test_backend.py test_app_utils.py test_settings_store.py test_security_utils.py test_ui_theme.py test_ui_downloads.py -v
+        run: uv run python -m pytest tests/ -v
 
   build:
     name: Build (${{ matrix.os }})
@@ -63,13 +63,13 @@ jobs:
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper --collect-all customtkinter index_ripper.py
+          uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper --collect-all customtkinter --paths src src/index_ripper/__main__.py
 
       - name: Build (macOS)
         if: startsWith(matrix.os, 'macos-')
         run: |
           uv run pyinstaller -F --windowed --name=IndexRipper \
-            --collect-all customtkinter --icon=app.png index_ripper.py
+            --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
           [ -f dist/IndexRipper ] && rm -f dist/IndexRipper || true
 
       - name: Sign app (ad-hoc)
@@ -81,7 +81,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pyinstaller --onefile --windowed --name=IndexRipper \
-            --collect-all customtkinter --icon=app.png index_ripper.py
+            --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
 
       - name: Verify artifact exists
         shell: bash

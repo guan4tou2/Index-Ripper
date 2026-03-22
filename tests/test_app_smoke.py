@@ -1,4 +1,4 @@
-"""Smoke tests for ui_ctk.WebsiteCopierCtk."""
+"""Smoke tests for index_ripper.app (WebsiteCopierCtk)."""
 import os
 import sys
 import unittest
@@ -18,12 +18,12 @@ if os.path.isdir(_tcl_dir) and "TCL_LIBRARY" not in os.environ:
 class TestWebsiteCopierCtkSmoke(unittest.TestCase):
     def _make_smoke(self):
         import importlib
-        mod = importlib.import_module("ui_ctk")
+        mod = importlib.import_module("index_ripper.app")
         importlib.reload(mod)
         return mod.WebsiteCopierCtk(ui_smoke=True)
 
     def test_import(self):
-        import ui_ctk  # noqa: F401
+        from index_ripper import app as ui_ctk  # noqa: F401
 
     def test_smoke_init_and_destroy(self):
         app = self._make_smoke()
@@ -43,7 +43,8 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(hasattr(app, "log_text"))
 
     def test_full_ui_has_scan_btn(self):
-        import ui_ctk, importlib
+        from index_ripper import app as ui_ctk
+        import importlib
         importlib.reload(ui_ctk)
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
         app.window.after(0, app.window.destroy)
@@ -52,9 +53,9 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(hasattr(app, "url_entry"))
         self.assertTrue(hasattr(app, "status_label"))
 
-
     def test_has_filters_container(self):
-        import ui_ctk, importlib
+        from index_ripper import app as ui_ctk
+        import importlib
         importlib.reload(ui_ctk)
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
         app.window.after(0, app.window.destroy)
@@ -62,7 +63,8 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(hasattr(app, "filters_container"))
 
     def test_add_file_type_filter(self):
-        import ui_ctk, importlib
+        from index_ripper import app as ui_ctk
+        import importlib
         importlib.reload(ui_ctk)
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
         app._add_file_type_filter(".mp4")
@@ -71,9 +73,9 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertIn(".mp4", app.file_types)
         self.assertIn(".mp4", app.file_type_widgets)
 
-
     def test_has_download_controls(self):
-        import ui_ctk, importlib
+        from index_ripper import app as ui_ctk
+        import importlib
         importlib.reload(ui_ctk)
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
         app.window.after(0, app.window.destroy)
@@ -84,7 +86,8 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(hasattr(app, "toggle_panels_btn"))
 
     def test_has_file_tree(self):
-        import ui_ctk, importlib
+        from index_ripper import app as ui_ctk
+        import importlib
         importlib.reload(ui_ctk)
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
         app.window.after(0, app.window.destroy)
@@ -95,7 +98,8 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(hasattr(app, "search_var"))
 
     def test_search_var_traces(self):
-        import ui_ctk, importlib
+        from index_ripper import app as ui_ctk
+        import importlib
         importlib.reload(ui_ctk)
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
         app.window.after(0, app.window.destroy)
@@ -104,7 +108,8 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(len(app.search_var.trace_info()) > 0)
 
     def test_has_progress_bar(self):
-        import ui_ctk, importlib
+        from index_ripper import app as ui_ctk
+        import importlib
         importlib.reload(ui_ctk)
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
         app.window.after(0, app.window.destroy)
@@ -113,7 +118,8 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(hasattr(app, "progress_label"))
 
     def test_has_panels_notebook(self):
-        import ui_ctk, importlib
+        from index_ripper import app as ui_ctk
+        import importlib
         importlib.reload(ui_ctk)
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=False)
         app.window.after(0, app.window.destroy)
@@ -123,9 +129,9 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         self.assertTrue(hasattr(app, "log_text"))
         self.assertTrue(hasattr(app, "downloads_panel"))
 
-
     def test_poll_methods_exist(self):
-        import ui_ctk, importlib
+        from index_ripper import app as ui_ctk
+        import importlib
         importlib.reload(ui_ctk)
         app = ui_ctk.WebsiteCopierCtk(ui_smoke=True)
         for method in ("_poll_scan_queue", "_poll_file_queue",
@@ -135,7 +141,7 @@ class TestWebsiteCopierCtkSmoke(unittest.TestCase):
         app.run()
 
     def test_scan_methods_exist(self):
-        import ui_ctk
+        from index_ripper import app as ui_ctk
         for method in ("start_scan", "toggle_scan_pause", "clear_scan_results",
                        "add_folder", "add_file", "update_progress",
                        "download_selected", "toggle_pause",

@@ -5,7 +5,7 @@ import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
-from backend import Backend
+from index_ripper.backend import Backend
 
 
 class MockUIManager:

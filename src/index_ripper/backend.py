@@ -12,7 +12,7 @@ from urllib.parse import unquote, urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-from app_utils import cleanup_partial_file, is_url_in_scope
+from index_ripper.utils import cleanup_partial_file, is_url_in_scope
 
 
 

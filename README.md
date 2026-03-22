@@ -96,16 +96,16 @@ uv sync
 
 ```bash
 # Run with uv (CustomTkinter UI)
-uv run python index_ripper.py
+uv run python -m index_ripper
 
 # Quick non-interactive smoke check
-uv run python index_ripper.py --smoke
+uv run python -m index_ripper --smoke
 
 # UI smoke check
-uv run python index_ripper.py --ui-smoke
+uv run python -m index_ripper --ui-smoke
 
 # Deterministic self-test (no real network)
-uv run python index_ripper.py --self-test
+uv run python -m index_ripper --self-test
 ```
 
 ## Download Prebuilt Binaries
@@ -165,7 +165,7 @@ Windows (PowerShell):
 ```powershell
 uv pip install pyinstaller
 uv run pyinstaller --onefile --windowed --icon=app.png --name=IndexRipper `
-  --collect-all customtkinter index_ripper.py
+  --collect-all customtkinter --paths src src/index_ripper/__main__.py
 ```
 
 macOS/Linux (bash):
@@ -174,10 +174,10 @@ macOS/Linux (bash):
 uv pip install pyinstaller
 # macOS .app
 uv run pyinstaller -F --windowed --name=IndexRipper \
-  --collect-all customtkinter --icon=app.png index_ripper.py
+  --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
 # Linux single binary
 uv run pyinstaller --onefile --windowed --name=IndexRipper \
-  --collect-all customtkinter --icon=app.png index_ripper.py
+  --collect-all customtkinter --icon=app.png --paths src src/index_ripper/__main__.py
 ```
 
 ## Important Notes

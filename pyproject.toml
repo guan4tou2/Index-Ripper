@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "index-ripper"
 version = "0.1.0"
@@ -7,15 +11,17 @@ dependencies = [
     "beautifulsoup4>=4.12.0,<5.0.0",
     "urllib3>=2.0.0,<3.0.0",
     "customtkinter>=5.2.0,<6.0.0",
-    "ttkbootstrap>=1.10.1,<2.0.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0"]
 
 [project.scripts]
-index-ripper = "ui_ctk:main"
+index-ripper = "index_ripper.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/index_ripper"]
 
 [tool.pytest.ini_options]
-testpaths = ["."]
+testpaths = ["tests"]
 python_files = ["test_*.py"]

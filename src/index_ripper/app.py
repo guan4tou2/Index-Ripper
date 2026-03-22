@@ -1,3 +1,4 @@
+"""Main application window."""
 from __future__ import annotations
 
 import copy
@@ -5,7 +6,6 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 from queue import Empty, Queue
 
 import tkinter as tk
@@ -17,174 +17,27 @@ from urllib3.util.retry import Retry
 
 import customtkinter as ctk
 
-from app_utils import build_download_path, default_download_folder, normalize_extension, rebuild_executor, safe_join, sanitize_filename
-from backend import Backend
-from ui_downloads import DownloadsPanel
-from ui_theme import (
+from index_ripper.utils import (
+    build_download_path,
+    default_download_folder,
+    normalize_extension,
+    rebuild_executor,
+    safe_join,
+    sanitize_filename,
+)
+from index_ripper.backend import Backend
+from index_ripper.settings import load_settings, save_settings
+from index_ripper.ui.downloads import DownloadsPanel
+from index_ripper.ui.theme import (
     apply_app_theme,
     configure_action_button_styles,
     ui_tokens,
 )
-
-@dataclass
-class TreeNode:
-    node_id: str
-    parent_id: str        # "" for root-level nodes
-    name: str
-    kind: str             # "folder" | "file"
-    full_path: str        # "" for folders
-    size: str
-    file_type: str
-    icon_group: str       # "folder"|"image"|"document"|"archive"|"code"|"audio"|"video"|"text"|"binary"
-    checked: bool = False
-    expanded: bool = False
-    hidden: bool = False  # True when filtered out by search
-    children: list[str] = field(default_factory=list)  # ordered list of child node_ids
+from index_ripper.ui.filetree import TreeNode, RowWidget, should_skip_file_row
+from index_ripper.ui.filters import FileTypeFilterMixin
 
 
-_EMOJI_ICONS = {
-    "folder":   "📁",
-    "image":    "🖼️",
-    "document": "📄",
-    "archive":  "🗜️",
-    "code":     "💻",
-    "audio":    "🎵",
-    "video":    "🎬",
-    "text":     "📝",
-    "binary":   "⚙️",
-}
-
-_BG_NORMAL        = "transparent"
-_BG_HOVER         = ("#F1F5F9", "#1E293B")
-_BG_CHECKED       = ("#EFF6FF", "#172554")
-_BG_CHECKED_HOVER = ("#DBEAFE", "#1E3A5F")
-
-
-class RowWidget:
-    """One visible row in the FileTree."""
-
-    INDENT_PX = 20
-    ROW_HEIGHT = 36
-
-    def __init__(self, parent, app, node: TreeNode, depth: int):
-        self.app = app
-        self.node_id = node.node_id
-        self._checked = node.checked
-        self._hovered = False
-
-        self.frame = ctk.CTkFrame(parent, height=self.ROW_HEIGHT, corner_radius=4)
-        self.frame.pack(fill="x", padx=4, pady=0)
-        self.frame.pack_propagate(False)
-
-        # 3-px accent bar (left edge, blue when checked)
-        self._accent = ctk.CTkFrame(
-            self.frame, width=3, corner_radius=0,
-            fg_color="#2563EB" if node.checked else "transparent",
-        )
-        self._accent.pack(side="left", fill="y")
-
-        # Indent spacer
-        if depth > 0:
-            ctk.CTkFrame(
-                self.frame, width=depth * self.INDENT_PX,
-                fg_color="transparent", height=self.ROW_HEIGHT,
-            ).pack(side="left")
-
-        # Emoji icon
-        ctk.CTkLabel(
-            self.frame,
-            text=_EMOJI_ICONS.get(node.icon_group, "📄"),
-            font=ctk.CTkFont(size=18),
-            width=28,
-        ).pack(side="left", padx=(4, 4))
-
-        # Name label
-        self.name_label = ctk.CTkLabel(
-            self.frame,
-            text=node.name,
-            anchor="w",
-            font=ctk.CTkFont(size=14, weight="bold" if node.kind == "folder" else "normal"),
-        )
-        self.name_label.pack(side="left", fill="x", expand=True)
-
-        # Chevron on RIGHT (folders only)
-        if node.kind == "folder":
-            self.chevron = ctk.CTkButton(
-                self.frame, text="▼" if node.expanded else "▶",
-                width=22, height=22, fg_color="transparent",
-                hover_color=("gray85", "gray30"), text_color=("gray40", "gray60"),
-                font=ctk.CTkFont(size=10),
-                command=lambda: app._on_chevron_click(self.node_id),
-            )
-            self.chevron.pack(side="right", padx=(4, 4))
-        elif node.kind == "file" and node.size:
-            # Size label (right side, files only)
-            ctk.CTkLabel(
-                self.frame,
-                text=node.size,
-                font=ctk.CTkFont(size=12),
-                text_color=("gray50", "gray60"),
-                width=80,
-                anchor="e",
-            ).pack(side="right", padx=(0, 8))
-
-        # Bind hover only on outer frame (avoids <Leave> flicker from child entry)
-        self.frame.bind("<Enter>", self._on_enter)
-        self.frame.bind("<Leave>", self._on_leave)
-        # Bind click on frame and all non-chevron children
-        self._bind_clicks(self.frame)
-
-    def _bind_clicks(self, widget) -> None:
-        """Bind click handler on widget and all children except the chevron."""
-        if hasattr(self, "chevron") and widget is self.chevron:
-            return  # chevron has its own command; don't intercept clicks
-        widget.bind("<Button-1>", self._on_click)
-        for child in widget.winfo_children():
-            self._bind_clicks(child)
-
-    def _on_enter(self, _event=None) -> None:
-        self._hovered = True
-        self._update_bg()
-
-    def _on_leave(self, _event=None) -> None:
-        self._hovered = False
-        self._update_bg()
-
-    def _on_click(self, event) -> None:
-        self.app._on_row_click(self.node_id, event)
-
-    def set_checked(self, checked: bool) -> None:
-        self._checked = checked
-        self._accent.configure(
-            fg_color="#2563EB" if checked else "transparent"
-        )
-        self._update_bg()
-
-    def set_chevron(self, expanded: bool) -> None:
-        if hasattr(self, "chevron"):
-            self.chevron.configure(text="▼" if expanded else "▶")
-
-    def _update_bg(self) -> None:
-        if self._checked and self._hovered:
-            color = _BG_CHECKED_HOVER
-        elif self._checked:
-            color = _BG_CHECKED
-        elif self._hovered:
-            color = _BG_HOVER
-        else:
-            color = _BG_NORMAL
-        self.frame.configure(fg_color=color)
-
-    def destroy(self) -> None:
-        self.frame.destroy()
-
-
-def should_skip_file_row(existing_entry) -> bool:
-    """Return True when a file row is already fully registered."""
-    return existing_entry is not None
-
-
-class WebsiteCopierCtk:
+class WebsiteCopierCtk(FileTypeFilterMixin):
     USER_AGENT = "IndexRipper/2.0"
 
     def __init__(self, ui_smoke: bool = False):
@@ -273,11 +126,8 @@ class WebsiteCopierCtk:
             # so native clipboard shortcuts work in every CTkEntry / CTkTextbox.
             for seq, virt in (
                 ("<Command-v>", "<<Paste>>"),
-                ("<Command-V>", "<<Paste>>"),
                 ("<Command-c>", "<<Copy>>"),
-                ("<Command-C>", "<<Copy>>"),
                 ("<Command-x>", "<<Cut>>"),
-                ("<Command-X>", "<<Cut>>"),
                 ("<Command-z>", "<<Undo>>"),
                 ("<Command-Z>", "<<Redo>>"),
             ):
@@ -362,7 +212,7 @@ class WebsiteCopierCtk:
         )
         self.url_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
-        # Scan button (toggles "Scan" ↔ "Stop Scan")
+        # Scan button (toggles "Scan" / "Stop Scan")
         self.scan_btn = ctk.CTkButton(toolbar, text="Scan", command=self.start_scan, width=90)
         self.scan_btn.grid(row=0, column=1, padx=(0, 4))
 
@@ -552,8 +402,6 @@ class WebsiteCopierCtk:
         except tk.TclError:
             self.is_processing_files = False
 
-    # --- Stub methods (implemented in later Tasks) ---
-
     def _build_filters_row(self) -> None:
         # ── Row 1: action buttons ──────────────────────────────────────────
         self._ctrl_row_frame = ctk.CTkFrame(self.window, fg_color="transparent")
@@ -580,8 +428,8 @@ class WebsiteCopierCtk:
 
         type_btns = ctk.CTkFrame(types_row, fg_color="transparent")
         type_btns.grid(row=0, column=1, sticky="w", padx=(0, 8))
-        ctk.CTkButton(type_btns, text="✓ All", command=self.select_all_types,  width=68, **_s).pack(side="left", padx=(0, 4))
-        ctk.CTkButton(type_btns, text="✗ All", command=self.deselect_all_types, width=68, **_s).pack(side="left")
+        ctk.CTkButton(type_btns, text="\u2713 All", command=self.select_all_types,  width=68, **_s).pack(side="left", padx=(0, 4))
+        ctk.CTkButton(type_btns, text="\u2717 All", command=self.deselect_all_types, width=68, **_s).pack(side="left")
 
         self.filters_container = ctk.CTkScrollableFrame(
             types_row,
@@ -657,7 +505,7 @@ class WebsiteCopierCtk:
         prev = self._last_visible
         # Append-only optimisation: if the existing rows are still a prefix of
         # the new list (no reordering), just pack the new rows at the end.
-        # This prevents the pack_forget→repack flash during scanning.
+        # This prevents the pack_forget->repack flash during scanning.
         if (
             len(self._visible_nodes) >= len(prev)
             and self._visible_nodes[: len(prev)] == prev
@@ -686,7 +534,7 @@ class WebsiteCopierCtk:
         self._last_visible = list(self._visible_nodes)
 
     def _schedule_tree_update(self) -> None:
-        """Debounce _rebuild_visible + _sync_rows to avoid O(n²) during bulk add."""
+        """Debounce _rebuild_visible + _sync_rows to avoid O(n^2) during bulk add."""
         if not self._tree_update_pending:
             self._tree_update_pending = True
             self.window.after(50, self._do_tree_update)
@@ -748,13 +596,13 @@ class WebsiteCopierCtk:
     def _build_panels(self) -> None:
         self.panels_notebook = ctk.CTkTabview(self.window, height=180)
         self.panels_notebook.grid(row=5, column=0, sticky="ew", padx=10, pady=(4, 10))
-        self._panels_widget = self.panels_notebook  # toggle_panels 用
+        self._panels_widget = self.panels_notebook  # toggle_panels uses this
 
         downloads_tab = self.panels_notebook.add("Downloads")
         logs_tab = self.panels_notebook.add("Logs")
-        self.panels_notebook.set("Logs")  # 預設顯示 Logs
+        self.panels_notebook.set("Logs")  # default to Logs
 
-        # Downloads tab：可捲動容器 + DownloadsPanel
+        # Downloads tab: scrollable container + DownloadsPanel
         downloads_scroll = ctk.CTkScrollableFrame(downloads_tab, height=120)
         downloads_scroll.pack(fill="both", expand=True)
         self.downloads_panel = DownloadsPanel(
@@ -764,7 +612,7 @@ class WebsiteCopierCtk:
             tokens=self.ui_tokens,
         )
 
-        # Logs tab：CTkTextbox
+        # Logs tab: CTkTextbox
         self.log_text = ctk.CTkTextbox(logs_tab, height=120, wrap="word")
         self.log_text.pack(fill="both", expand=True)
 
@@ -787,13 +635,13 @@ class WebsiteCopierCtk:
         controls.grid(row=0, column=1, sticky="e", padx=(10, 0))
 
         self.download_btn = ctk.CTkButton(
-            controls, text="⬇ Download Selected", command=self.download_selected,
+            controls, text="\u2b07 Download Selected", command=self.download_selected,
             height=30,
         )
         self.download_btn.grid(row=0, column=0, padx=(0, 4))
 
         self.pause_btn = ctk.CTkButton(
-            controls, text="⏸ Pause",
+            controls, text="\u23f8 Pause",
             fg_color=("gray70", "gray30"),
             hover_color=("gray60", "gray40"),
             command=self.toggle_pause,
@@ -803,7 +651,7 @@ class WebsiteCopierCtk:
         self.pause_btn.grid(row=0, column=1, padx=(0, 4))
 
         self.path_btn = ctk.CTkButton(
-            controls, text="📁 Folder",
+            controls, text="\U0001f4c1 Folder",
             fg_color=("gray70", "gray30"),
             hover_color=("gray60", "gray40"),
             command=self.choose_download_path,
@@ -1114,7 +962,7 @@ class WebsiteCopierCtk:
             self.scan_pause_btn.grid()          # show
             self.scan_pause_btn.configure(state="normal")
             self.progress_bar.set(0)
-            self.progress_label.configure(text="Scanning…")
+            self.progress_label.configure(text="Scanning\u2026")
             self._set_status("Scanning", "#B45309")
         self.window.after(0, _start)
 
@@ -1133,12 +981,12 @@ class WebsiteCopierCtk:
             else:
                 self.progress_bar.set(1)
                 n = len(self.files_dict)
-                self.progress_label.configure(text=f"Done — {n} files found")
+                self.progress_label.configure(text=f"Done \u2014 {n} files found")
                 self._set_status("Ready", "#059669")
         self.window.after(0, _finish)
 
     def update_progress(self, file_path: str, file_name: str, progress: float) -> None:
-        """Backend hook — called from download thread with per-file progress (0–100)."""
+        """Backend hook — called from download thread with per-file progress (0-100)."""
         self.window.after(0, lambda: self._update_download_progress(file_path, progress))
 
     def update_download_status(self, file_path: str, status: str) -> None:
@@ -1146,13 +994,13 @@ class WebsiteCopierCtk:
         self.window.after(0, lambda: self._set_download_status(file_path, status))
 
     def _update_scan_progress(self, scanned: int, total: int) -> None:
-        """Update the scan progress bar (0–100%)."""
+        """Update the scan progress bar (0-100%)."""
         if total <= 0:
             self.progress_bar.set(0)
             return
         pct = scanned / total
         self.progress_bar.set(pct)
-        self.progress_label.configure(text=f"Scanning… {scanned}/{total}  ({pct:.0%})")
+        self.progress_label.configure(text=f"Scanning\u2026 {scanned}/{total}  ({pct:.0%})")
 
     def add_folder(self, dir_path: str, url: str) -> str:
         """Ensure all path segments exist as folder nodes; return leaf node_id."""
@@ -1177,6 +1025,7 @@ class WebsiteCopierCtk:
                         size="",
                         file_type="",
                         icon_group="folder",
+                        expanded=True,
                     )
                     self.tree_nodes[node_id] = node
                     if parent_id:
@@ -1257,25 +1106,25 @@ class WebsiteCopierCtk:
         ext = normalize_extension(file_name)
         mime = (file_type or "").lower()
         if ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".ico"):
-            return "🖼", "image"
+            return "\U0001f5bc", "image"
         if ext in (".md", ".txt", ".pdf", ".doc", ".docx", ".rtf"):
-            return "📄", "document"
+            return "\U0001f4c4", "document"
         if ext in (".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz"):
-            return "🗜", "archive"
+            return "\U0001f5dc", "archive"
         if ext in (
             ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".c", ".cpp",
             ".h", ".hpp", ".json", ".yaml", ".yml", ".toml", ".xml", ".html", ".css", ".sh",
         ):
-            return "💻", "code"
+            return "\U0001f4bb", "code"
         if "text/" in mime:
-            return "📄", "text"
+            return "\U0001f4c4", "text"
         if "image/" in mime:
-            return "🖼", "image"
+            return "\U0001f5bc", "image"
         if "audio/" in mime:
-            return "🎵", "audio"
+            return "\U0001f3b5", "audio"
         if "video/" in mime:
-            return "🎬", "video"
-        return "📦", "binary"
+            return "\U0001f3ac", "video"
+        return "\U0001f4e6", "binary"
 
     # --- Backend bridge: downloads ---
 
@@ -1445,70 +1294,6 @@ class WebsiteCopierCtk:
                 self._panels_widget.grid()
             self.panels_visible = True
             self.toggle_panels_btn.configure(text="Hide Panels")
-
-    def select_all_types(self) -> None:
-        for var in self.file_types.values():
-            var.set(True)
-
-    def deselect_all_types(self) -> None:
-        for var in self.file_types.values():
-            var.set(False)
-
-    def _bind_hscroll_wheel(self, widget) -> None:
-        """讓 widget 的滾輪事件橫向捲動 filters_container（平滑版）。"""
-        try:
-            canvas = self.filters_container._parent_canvas
-        except AttributeError:
-            return
-
-        # 每個 scroll unit = 20px，讓滾動距離合理
-        canvas.configure(xscrollincrement=20)
-
-        def _scroll(event):
-            delta = getattr(event, "delta", 0)
-            if not delta:
-                return
-            # macOS trackpad delta 很小 (1–5)；滑鼠滾輪約 120
-            # 統一換算為 unit 數，最少 1
-            units = max(1, abs(delta) // 3)
-            canvas.xview_scroll(-units if delta > 0 else units, "units")
-
-        widget.bind("<MouseWheel>", _scroll, add="+")
-        widget.bind("<Shift-MouseWheel>", _scroll, add="+")
-
-    def _add_file_type_filter(self, ext: str) -> None:
-        if not hasattr(self, "filters_container"):
-            return
-        if ext in self.file_types:
-            return
-        var = tk.BooleanVar(value=True)
-        self.file_types[ext] = var
-        self.file_type_counts[ext] = 0
-        cb = ctk.CTkCheckBox(
-            self.filters_container,
-            text=ext if ext else "(no ext)",
-            variable=var,
-            onvalue=True,
-            offvalue=False,
-        )
-        cb.pack(side="left", padx=4, pady=4)
-        self._bind_hscroll_wheel(cb)
-        var.trace_add("write", lambda *_: self._on_type_filter_changed(ext))
-        self.file_type_widgets[ext] = cb
-
-    def _on_type_filter_changed(self, ext: str) -> None:
-        """Show or hide existing tree rows when a file-type checkbox is toggled."""
-        if self.full_tree_backup:
-            return  # search filter active; handled by _filter_tree_by_term
-        var = self.file_types.get(ext)
-        if var is None:
-            return
-        visible = var.get()
-        for node in self.tree_nodes.values():
-            if node.kind == "file" and normalize_extension(node.name) == ext:
-                node.hidden = not visible
-        self._rebuild_visible()
-        self._sync_rows()
 
 
 def main():

@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from settings_store import load_settings, save_settings
+from index_ripper.settings import load_settings, save_settings
 
 
 class TestSettingsStore(unittest.TestCase):
