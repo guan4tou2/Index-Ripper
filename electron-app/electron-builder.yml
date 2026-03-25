@@ -16,27 +16,18 @@ files:
   - "!{CHANGELOG.md,README.md,LICENSE}"
 win:
   target:
-    - target: nsis
+    - target: dir
       arch: [x64]
   icon: resources/icon.png
-  artifactName: "IndexRipper-${version}-Windows.${ext}"
-nsis:
-  oneClick: true
-  perMachine: false
-  deleteAppDataOnUninstall: true
 mac:
   target:
-    - target: dmg
+    - target: dir
       arch: [universal]
   icon: resources/icon.png
   category: public.app-category.utilities
-  artifactName: "IndexRipper-${version}-macOS.${ext}"
-dmg:
-  writeUpdateInfo: false
 linux:
   target:
-    - target: AppImage
+    - target: dir
       arch: [x64]
   icon: resources/icon.png
   category: Utility
-  artifactName: "IndexRipper-${version}-Linux.${ext}"

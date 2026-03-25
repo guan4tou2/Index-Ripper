@@ -58,15 +58,18 @@ jobs:
           - os: windows-latest
             build_cmd: npm run build:win
             artifact_name: IndexRipper-Windows
-            artifact_glob: "electron-app/dist/*.exe"
+            zip_name: IndexRipper-Windows-x64
+            dir_name: win-unpacked
           - os: macos-14
             build_cmd: npm run build:mac
             artifact_name: IndexRipper-macOS
-            artifact_glob: "electron-app/dist/*.dmg"
+            zip_name: IndexRipper-macOS-universal
+            dir_name: mac-universal
           - os: ubuntu-latest
             build_cmd: npm run build:linux
             artifact_name: IndexRipper-Linux
-            artifact_glob: "electron-app/dist/*.AppImage"
+            zip_name: IndexRipper-Linux-x64
+            dir_name: linux-unpacked
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -85,14 +88,25 @@ jobs:
       - name: Build
         run: ${{ matrix.build_cmd }}
 
-      - name: List dist
+      - name: Package portable zip
         shell: bash
-        run: ls -la dist/ || true
+        run: |
+          cd dist
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            # macOS dir target outputs .app bundle inside mac-universal/
+            zip -r -y "${{ matrix.zip_name }}.zip" "${{ matrix.dir_name }}/Index Ripper.app"
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            cd "${{ matrix.dir_name }}"
+            7z a -tzip "../${{ matrix.zip_name }}.zip" .
+          else
+            cd "${{ matrix.dir_name }}"
+            zip -r -y "../${{ matrix.zip_name }}.zip" .
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_glob }}
+          path: electron-app/dist/${{ matrix.zip_name }}.zip
           if-no-files-found: error
 
   # -----------------------------------------------------------------------
